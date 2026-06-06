@@ -7,6 +7,7 @@ import type {
   MintLinkOutput,
   QURL,
   ResolveOutput,
+  SessionData,
 } from "../client.js";
 import type { GetPromptResult } from "@modelcontextprotocol/sdk/types.js";
 
@@ -17,11 +18,17 @@ export function makeMockClient(overrides: Partial<IQURLClient> = {}): IQURLClien
     listQURLs: vi.fn(),
     deleteQURL: vi.fn(),
     updateQURL: vi.fn(),
+    updateResource: vi.fn(),
     extendQURL: vi.fn(),
     resolveQURL: vi.fn(),
     getQuota: vi.fn(),
     mintLink: vi.fn(),
     batchCreate: vi.fn(),
+    revokeQurlToken: vi.fn(),
+    updateQurlToken: vi.fn(),
+    listResourceSessions: vi.fn(),
+    terminateResourceSession: vi.fn(),
+    terminateAllResourceSessions: vi.fn(),
     ...overrides,
   };
 }
@@ -92,6 +99,7 @@ export function sampleResolveOutput(overrides: Partial<ResolveOutput> = {}): Res
 
 export function sampleMintLinkOutput(overrides: Partial<MintLinkOutput> = {}): MintLinkOutput {
   return {
+    qurl_id: "q_abc123def45",
     qurl_link: "https://qurl.link/at_xyz",
     expires_at: "2026-03-10T00:00:00Z",
     ...overrides,
@@ -118,5 +126,17 @@ export function sampleBatchCreateOutput(
       ...overrides,
     },
     meta: { request_id: "req_batch" },
+  };
+}
+
+export function sampleSession(overrides: Partial<SessionData> = {}): SessionData {
+  return {
+    session_id: "sess_abc123",
+    qurl_id: "q_abc123def45",
+    src_ip: "192.0.2.10",
+    user_agent: "curl/8.0.0",
+    created_at: "2026-06-01T00:00:00Z",
+    last_seen_at: "2026-06-01T00:05:00Z",
+    ...overrides,
   };
 }

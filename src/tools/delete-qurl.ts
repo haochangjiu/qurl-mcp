@@ -10,11 +10,11 @@ export const deleteQurlSchema = z.object({
   // instead of a confusing API-side rejection.
   resource_id: z
     .string()
-    .min(1)
-    .startsWith("r_", "delete_qurl only accepts resource IDs (r_ prefix). Use update_qurl or mint_link for q_ IDs.")
-    .describe(
-      "The resource ID (must start with r_). delete_qurl does not accept q_ (qURL display) IDs.",
-    ),
+    .regex(
+      /^r_[a-z0-9_-]{11}$/,
+      "delete_qurl only accepts resource IDs (r_ prefix). Use update_qurl or mint_link for q_ IDs.",
+    )
+    .describe("The resource ID (r_ prefix). delete_qurl does not accept q_ (qURL display) IDs."),
 });
 
 export function deleteQurlTool(client: IQURLClient) {
@@ -29,7 +29,7 @@ export function deleteQurlTool(client: IQURLClient) {
       "**Idempotent:** the API returns 404 for re-deletes, never-existed IDs, and resources owned by another API key (ownership-mismatch is collapsed into 404 server-side to avoid existence disclosure); this tool swallows all three. " +
       "Branch on `was_already_revoked` to distinguish the no-op case from a successful revoke on this call. " +
       "When the ID came from user input and ownership matters, call `get_qurl` first — a 200 confirms ownership; a thrown 404 is equally ambiguous on that endpoint too. " +
-      "Returns a confirmation payload. By default the resource is excluded from `list_qurls`; pass `status: \"revoked\"` to see it.",
+      'Returns a confirmation payload. By default the resource is excluded from `list_qurls`; pass `status: "revoked"` to see it.',
     inputSchema: deleteQurlSchema,
     outputSchema: deleteQurlOutputSchema,
     annotations: {

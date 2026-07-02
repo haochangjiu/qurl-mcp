@@ -1,0 +1,45 @@
+import { z } from "zod";
+import type { EmailDeliveryResult } from "../email-types.js";
+import { sendEmailMessage } from "../services/email.js";
+
+export const emailDeliveryInputSchema = z.object({
+  to: z
+    .array(z.string().email())
+    .min(1)
+    .max(50)
+    .describe("One or more recipient email addresses for the notification email."),
+  subject: z
+    .string()
+    .max(200)
+    .optional()
+    .describe("Optional email subject. Defaults to a tool-specific subject when omitted."),
+  message: z
+    .string()
+    .max(5000)
+    .optional()
+    .describe("Optional plain-text message to prepend above the generated qURL details."),
+});
+
+export type EmailDeliveryInput = z.infer<typeof emailDeliveryInputSchema>;
+
+export interface ToolEmailInput {
+  delivery?: EmailDeliveryInput;
+  defaultSubject: string;
+  detailLines: string[];
+}
+
+export async function maybeDeliverToolEmail(
+  input: ToolEmailInput,
+): Promise<EmailDeliveryResult | undefined> {
+  if (!input.delivery) return undefined;
+
+  const subject = input.delivery.subject?.trim() || input.defaultSubject;
+  const sections = [input.delivery.message?.trim(), input.detailLines.join("\n"), "Sent by qURL."]
+    .filter((section): section is string => typeof section === "string" && section.length > 0);
+
+  return sendEmailMessage({
+    to: input.delivery.to,
+    subject,
+    text: sections.join("\n\n"),
+  });
+}

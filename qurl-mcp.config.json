@@ -1,0 +1,20 @@
+{
+  "maxUploadFileDataBytes": "10mb",
+  "defaultQurlApiUrl": "https://api.layerv.ai",
+  "defaultQurlConnectorUrl": "https://getqurllink.layerv.ai/",
+  "qurlApiKey": "lv_live_***",
+  "smtp": {
+    "host": " ",
+    "port": 25,
+    "secure": false,
+    "username": "***",
+    "password": "***",
+    "fromEmail": "***",
+    "fromName": "qURL"
+  },
+  "publicVideo": {
+    "title": "Product Demo Video",
+    "pagePath": "/media/video",
+    "filePath": "E:\\System File\\Desktop\\example.mp4"
+  }
+}

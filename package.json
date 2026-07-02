@@ -5,7 +5,8 @@
   "mcpName": "io.github.layervai/qurl-mcp",
   "type": "module",
   "bin": {
-    "qurl-mcp": "./dist/index.js"
+    "qurl-mcp": "./dist/index.js",
+    "qurl-mcp-http": "./dist/http.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,6 +14,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
+    "start:http": "node dist/http.js",
     "lint": "eslint src/",
     "test": "vitest run",
     "format": "prettier --write 'src/**/*.ts'",
@@ -35,11 +37,16 @@
   "dependencies": {
     "@layervai/qurl": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@types/express": "^5.0.6",
+    "express": "^5.2.1",
+    "nodemailer": "^9.0.1",
+    "pdfkit": "^0.19.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
     "@types/node": "^25.4.0",
+    "@types/nodemailer": "^7.0.12",
     "@typescript-eslint/eslint-plugin": "^8.59.0",
     "@typescript-eslint/parser": "^8.32.1",
     "eslint": "^10.2.1",
@@ -51,7 +58,8 @@
     "node": ">=20"
   },
   "files": [
-    "dist/"
+    "dist/",
+    "assets/"
   ],
   "publishConfig": {
     "access": "public"

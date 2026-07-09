@@ -15,7 +15,6 @@ export interface HttpServerConfig {
   maxUploadFileDataBytes: number;
   defaultQurlApiUrl: string;
   defaultQurlConnectorUrl?: string;
-  qurlApiKey?: string;
   publicVideo?: PublicVideoConfig;
 }
 
@@ -55,8 +54,7 @@ export function loadHttpServerConfig(configPath = getDefaultHttpConfigPath()): H
   const port = Number(process.env.MCP_PORT ?? fileConfig.port ?? 3000);
   const host = process.env.MCP_HOST ?? fileConfig.host ?? "0.0.0.0";
   const baseUrl = process.env.MCP_BASE_URL ?? fileConfig.baseUrl ?? `http://127.0.0.1:${port}`;
-  const allowedHosts =
-    parseAllowedHosts(process.env.MCP_ALLOWED_HOSTS) ?? fileConfig.allowedHosts;
+  const allowedHosts = parseAllowedHosts(process.env.MCP_ALLOWED_HOSTS) ?? fileConfig.allowedHosts;
   const publicVideo = runtimeConfig.publicVideo ?? resolvePublicVideoFromHttpConfig(fileConfig);
 
   return {
@@ -67,7 +65,6 @@ export function loadHttpServerConfig(configPath = getDefaultHttpConfigPath()): H
     maxUploadFileDataBytes: runtimeConfig.maxUploadFileDataBytes,
     defaultQurlApiUrl: runtimeConfig.defaultQurlApiUrl,
     defaultQurlConnectorUrl: runtimeConfig.defaultQurlConnectorUrl,
-    qurlApiKey: runtimeConfig.qurlApiKey,
     publicVideo,
   };
 }

@@ -43,7 +43,6 @@ describe("public video config", () => {
       configPath,
       JSON.stringify({
         defaultQurlApiUrl: "https://api.layerv.ai",
-        qurlApiKey: "config-key",
         publicVideo: {
           title: "Launch Demo",
           pagePath: "/media/video",
@@ -59,7 +58,6 @@ describe("public video config", () => {
       pagePath: "/media/video",
       filePath: "D:/videos/demo.mp4",
     });
-    expect(config.qurlApiKey).toBe("config-key");
   });
 
   it("falls back to the HTTP config file for public video settings", () => {
@@ -91,7 +89,6 @@ describe("public video config", () => {
 
     const config = loadHttpServerConfig(httpConfigPath);
 
-    expect(config.qurlApiKey).toBeUndefined();
     expect(config.publicVideo).toEqual({
       title: "Server Demo",
       pagePath: "/show/video",
@@ -126,13 +123,12 @@ describe("public video config", () => {
     });
   });
 
-  it("allows environment variables to override the configured qurl api key", () => {
+  it("loads the qurl API key only from the environment", () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(
       configPath,
       JSON.stringify({
         defaultQurlApiUrl: "https://api.layerv.ai",
-        qurlApiKey: "config-key",
       }),
     );
 

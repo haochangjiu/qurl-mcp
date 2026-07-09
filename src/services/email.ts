@@ -48,9 +48,7 @@ export async function sendEmailMessage(input: EmailMessageInput): Promise<EmailD
     },
   });
 
-  const from = smtp.fromName
-    ? `"${smtp.fromName.replace(/"/g, '\\"')}" <${smtp.fromEmail}>`
-    : smtp.fromEmail;
+  const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
 
   const results: EmailDeliveryRecipientResult[] = [];
   for (const recipient of recipients) {

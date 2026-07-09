@@ -26,7 +26,9 @@ export const uploadFileQurlSchema = z.object({
   content_type: z
     .enum(supportedMimeTypes)
     .optional()
-    .describe("Optional MIME type override. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif"),
+    .describe(
+      "Optional MIME type override. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif",
+    ),
   label: z
     .string()
     .max(500)
@@ -51,7 +53,6 @@ export const uploadFileQurlSchema = z.object({
     .describe('How long access lasts after clicking (e.g., "1h")'),
   access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
 });
-
 
 export function uploadFileQurlTool(client: IQURLClient) {
   return {

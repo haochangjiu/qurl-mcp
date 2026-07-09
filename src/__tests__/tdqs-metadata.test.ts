@@ -534,7 +534,9 @@ describe("structuredContent ↔ outputSchema round-trip", () => {
     },
   };
 
-  for (const [name, { input, clientOverrides, textIsJson = true, setup }] of Object.entries(cases)) {
+  for (const [name, { input, clientOverrides, textIsJson = true, setup }] of Object.entries(
+    cases,
+  )) {
     it(`${name} structuredContent validates against outputSchema`, async () => {
       const factory = factoryByName.get(name);
       if (!factory) throw new Error(`Unknown tool ${name}`);

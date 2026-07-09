@@ -102,7 +102,8 @@ If you want to use this server in `stdio` mode with a local MCP client:
   "mcpServers": {
     "qurl": {
       "command": "npx",
-      "args": ["@layervai/qurl-mcp"]
+      "args": ["@layervai/qurl-mcp"],
+      "env": { "QURL_API_KEY": "lv_live_xxx" }
     }
   }
 }
@@ -110,10 +111,15 @@ If you want to use this server in `stdio` mode with a local MCP client:
 
 ## Configuration Files
 
-This project uses two configuration files:
+Copy the tracked examples to create local configuration files:
 
-- `qurl-mcp.config.json`
-- `qurl-mcp.http.json`
+```bash
+cp qurl-mcp.config.example.json qurl-mcp.config.json
+cp qurl-mcp.http.example.json qurl-mcp.http.json
+```
+
+The local files are gitignored so credentials and machine-specific paths are
+not committed.
 
 Their responsibilities are:
 
@@ -131,7 +137,9 @@ Their responsibilities are:
 | `maxUploadFileDataBytes` | Limits the decoded file size accepted by `upload_file_data_qurl` |
 | `defaultQurlApiUrl` | Base URL of the qURL backend API |
 | `defaultQurlConnectorUrl` | Base URL of the upload connector |
-| `qurlApiKey` | API key used by the server to call qURL |
+
+Set `QURL_API_KEY` in the environment for `stdio` mode. In HTTP mode, every
+client request supplies its own qURL API key as a bearer token.
 
 ### SMTP Settings
 
@@ -151,6 +159,9 @@ These settings are used when email delivery is requested by tools such as:
 - `mint_link`
 - `upload_text_qurl`
 - `upload_file_data_qurl`
+
+Prefer `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, and
+`QURL_SMTP_FROM_EMAIL` environment variables for sensitive SMTP values.
 
 ### Public Video Page Settings
 
@@ -176,14 +187,15 @@ When configured, the HTTP server additionally exposes:
 
 ## Configuration Priority
 
-By default, configuration is loaded from the two JSON files above.
+By default, configuration is loaded from the two local JSON files above. If a
+file is absent, built-in defaults and environment variables are used.
 
 The following environment variables can override the config file paths:
 
 - `QURL_MCP_CONFIG`
 - `QURL_MCP_HTTP_CONFIG`
 
-> For the current deployment model, it is recommended to manage the main runtime settings in the JSON files.
+Do not commit API keys, SMTP credentials, or private file-system paths.
 
 ## HTTP Routes
 
@@ -198,23 +210,22 @@ After starting in `http` mode, the common routes are:
 | `publicVideo.pagePath` | Public video playback page |
 | `publicVideo.pagePath + /file` | MP4 streaming endpoint |
 
-## OpenAI / GPT / ChatGPT Configuration
+## HTTP Authentication
 
-The current `HTTP MCP` mode is:
+The `/mcp` endpoint requires `Authorization: Bearer <qURL API key>` on every
+request. The bearer token is bound to the resulting MCP session, so a session
+ID cannot be reused with a different credential.
 
-- `No Auth`
+Configure remote MCP clients with:
 
-So when configuring the remote MCP server in OpenAI Platform or GPT:
-
-| Setting | Recommended Value |
+| Setting | Value |
 | --- | --- |
 | MCP Server URL | Your public HTTPS URL plus `/mcp` |
-| Authentication | `No Auth` |
+| Authentication | Bearer token |
+| Token | The caller's qURL API key |
 
-Notes:
-
-- the project no longer depends on client-provided access tokens
-- the real qURL API key is read by the server from `qurl-mcp.config.json`
+If a client only supports OAuth discovery, place an OAuth-compatible gateway
+in front of this server rather than exposing `/mcp` without authentication.
 
 ## How to Verify Deployment
 
@@ -251,7 +262,7 @@ Example:
 
 ```bash
 docker build -t qurl-mcp .
-docker run -i qurl-mcp
+docker run -i -e QURL_API_KEY=lv_live_xxx qurl-mcp
 ```
 
 If you deploy with Docker, make sure the container can still access the correct config files, or override the config file paths with environment variables.
@@ -271,15 +282,15 @@ If you deploy with Docker, make sure the container can still access the correct 
 
 ## Recommended Deployment Order
 
-1. Update `qurl-mcp.config.json`
-2. Update `qurl-mcp.http.json`
+1. Copy and update the two example config files
+2. Set credentials through environment variables
 3. Run `npm install`
 4. Run `npm run build`
 5. Run `npm run start:http`
 6. Verify `/healthz`
-7. Configure nginx reverse proxy
-8. Verify public access to `/mcp`, legal pages, and the video page
-9. Configure the remote MCP server in OpenAI Platform with `No Auth`
+7. Verify unauthenticated `/mcp` requests receive `401`
+8. Configure the HTTPS reverse proxy
+9. Verify an authenticated MCP initialization and the optional public pages
 
 ## Notes
 
@@ -288,7 +299,6 @@ For a more polished public release, it is recommended to add:
 - a dedicated nginx deployment guide
 - a dedicated domain verification guide
 - a dedicated GPT / OpenAI Platform submission guide
-- a more secure production key management model
 
 ## License
 

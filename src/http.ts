@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
@@ -11,16 +12,18 @@ import {
   localhostHostValidation,
 } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { rateLimit } from "express-rate-limit";
 import { runWithRequestAuthContext } from "./auth/request-context.js";
+import {
+  createPassthroughBearerVerifier,
+  createQurlClientFromBearerToken,
+} from "./auth/static-bearer.js";
 import { getDefaultConfigPath, inspectSmtpConfig } from "./config.js";
 import { getDefaultHttpConfigPath, loadHttpServerConfig } from "./http-config.js";
-import { MISSING_API_KEY_MESSAGE, QURLClient } from "./client.js";
 import { getLegalDocuments, renderLegalDocumentHtml } from "./services/legal-pages.js";
-import {
-  getPublicVideoFileRoute,
-  renderPublicVideoPageHtml,
-} from "./services/video-page.js";
+import { getPublicVideoFileRoute, renderPublicVideoPageHtml } from "./services/video-page.js";
 import { createServer } from "./server.js";
 
 installTimestampedConsole();
@@ -31,6 +34,7 @@ const { version } = require("../package.json") as { version: string };
 type SessionContext = {
   transport: StreamableHTTPServerTransport;
   server: ReturnType<typeof createServer>;
+  bearerToken: string;
 };
 
 const configPath = getDefaultHttpConfigPath();
@@ -41,11 +45,6 @@ const host = config.host;
 const baseUrl = config.baseUrl;
 const defaultQurlApiUrl = config.defaultQurlApiUrl;
 const defaultQurlConnectorUrl = config.defaultQurlConnectorUrl;
-const configuredQurlApiKey = config.qurlApiKey ?? "";
-const httpClient = new QURLClient({
-  apiKey: configuredQurlApiKey,
-  baseURL: defaultQurlApiUrl,
-});
 
 function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
   // Base64 inflates payload size by roughly 4/3; keep extra headroom for JSON envelope fields.
@@ -55,6 +54,23 @@ function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
 const app = express();
 app.use(express.json({ limit: getJsonBodyLimitBytes(config.maxUploadFileDataBytes) }));
 
+const mcpRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+const publicFileRateLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+const bearerAuthMiddleware = requireBearerAuth({
+  verifier: createPassthroughBearerVerifier({ qurlApiUrl: defaultQurlApiUrl }),
+  requiredScopes: ["mcp:tools"],
+});
+
 if (config.allowedHosts?.length) {
   app.use(hostHeaderValidation(config.allowedHosts));
 } else {
@@ -63,7 +79,7 @@ if (config.allowedHosts?.length) {
     app.use(localhostHostValidation());
   } else if (host === "0.0.0.0" || host === "::") {
     console.warn(
-      `Warning: Server is binding to ${host} without DNS rebinding protection. ` +
+      `Warning: Server is binding to ${sanitizeLogValue(host)} without DNS rebinding protection. ` +
         "Consider setting allowedHosts to restrict accepted Host headers.",
     );
   }
@@ -80,6 +96,21 @@ function formatDurationMs(startedAt: number): string {
   return `${Date.now() - startedAt}ms`;
 }
 
+function sanitizeLogValue(value: string): string {
+  return value.replace(/[\r\n\u2028\u2029]/g, " ").slice(0, 512);
+}
+
+function getAuthenticatedBearerToken(req: express.Request): string | undefined {
+  const token = req.auth?.token.trim();
+  return token ? token : undefined;
+}
+
+function bearerTokensMatch(left: string, right: string): boolean {
+  const leftBytes = Buffer.from(left, "utf8");
+  const rightBytes = Buffer.from(right, "utf8");
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+}
+
 function getJsonRpcMethod(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
   return "method" in body && typeof body.method === "string" ? body.method : undefined;
@@ -87,26 +118,21 @@ function getJsonRpcMethod(body: unknown): string | undefined {
 
 function getToolNameFromBody(body: unknown): string | undefined {
   if (!body || typeof body !== "object") return undefined;
-  if (!("params" in body) || typeof body.params !== "object" || body.params === null) return undefined;
-  return "name" in body.params && typeof body.params.name === "string" ? body.params.name : undefined;
+  if (!("params" in body) || typeof body.params !== "object" || body.params === null)
+    return undefined;
+  return "name" in body.params && typeof body.params.name === "string"
+    ? body.params.name
+    : undefined;
 }
 
 function logRequestSummary(req: IncomingMessage, route: string, body?: unknown): void {
-  const method = req.method ?? "UNKNOWN";
-  const sessionId = getSessionId(req) ?? "(none)";
+  const method = sanitizeLogValue(req.method ?? "UNKNOWN");
+  const sessionId = sanitizeLogValue(getSessionId(req) ?? "(none)");
   const rpcMethod = getJsonRpcMethod(body);
   const toolName = rpcMethod === "tools/call" ? getToolNameFromBody(body) : undefined;
-  const toolSuffix = toolName ? ` tool=${toolName}` : "";
-  const rpcSuffix = rpcMethod ? ` rpc=${rpcMethod}` : "";
+  const toolSuffix = toolName ? ` tool=${sanitizeLogValue(toolName)}` : "";
+  const rpcSuffix = rpcMethod ? ` rpc=${sanitizeLogValue(rpcMethod)}` : "";
   console.warn(`[mcp-http session=${sessionId}] ${method} ${route}${rpcSuffix}${toolSuffix}`);
-}
-
-function formatBodyForLog(body: unknown): string {
-  try {
-    return JSON.stringify(body);
-  } catch {
-    return String(body);
-  }
 }
 
 function rejectJsonRpc(res: ServerResponse, statusCode: number, message: string): void {
@@ -184,12 +210,9 @@ function streamPublicVideo(req: express.Request, res: express.Response, filePath
 const REINITIALIZE_MESSAGE =
   "Session not found. The MCP server may have restarted. Please re-initialize the MCP connection.";
 
-function logMissingSession(
-  req: IncomingMessage,
-  body?: unknown,
-): void {
-  const sessionId = getSessionId(req) ?? "(none)";
-  const method = req.method ?? "UNKNOWN";
+function logMissingSession(req: IncomingMessage, body?: unknown): void {
+  const sessionId = sanitizeLogValue(getSessionId(req) ?? "(none)");
+  const method = sanitizeLogValue(req.method ?? "UNKNOWN");
   const rpcMethod = getJsonRpcMethod(body);
   const toolName = rpcMethod === "tools/call" ? getToolNameFromBody(body) : undefined;
   const action =
@@ -204,18 +227,22 @@ function logMissingSession(
             : rpcMethod === "tools/call"
               ? "tool call request"
               : "request";
-  const rpcSuffix = rpcMethod ? ` rpc=${rpcMethod}` : "";
-  const toolSuffix = toolName ? ` tool=${toolName}` : "";
+  const rpcSuffix = rpcMethod ? ` rpc=${sanitizeLogValue(rpcMethod)}` : "";
+  const toolSuffix = toolName ? ` tool=${sanitizeLogValue(toolName)}` : "";
   console.warn(
     `[mcp-http session=${sessionId}] session missing; client must re-initialize action="${action}" method=${method}${rpcSuffix}${toolSuffix}`,
   );
 }
 
-function withRequestAuth<T>(sessionId: string | undefined, fn: () => Promise<T>) {
+function withRequestAuth<T>(
+  sessionId: string | undefined,
+  qurlApiKey: string,
+  fn: () => Promise<T>,
+) {
   return runWithRequestAuthContext(
     {
       sessionId: sessionId ?? "(none)",
-      qurlApiKey: configuredQurlApiKey || undefined,
+      qurlApiKey,
       qurlConnectorUrl: defaultQurlConnectorUrl,
       maxUploadFileDataBytes: config.maxUploadFileDataBytes,
     },
@@ -223,23 +250,31 @@ function withRequestAuth<T>(sessionId: string | undefined, fn: () => Promise<T>)
   );
 }
 
-app.post("/mcp", async (req, res) => {
+app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   logRequestSummary(req, "/mcp", req.body);
   const sessionId = getSessionId(req);
+  const bearerToken = getAuthenticatedBearerToken(req);
   const startedAt = Date.now();
   const rpcMethod = getJsonRpcMethod(req.body);
   const toolName = rpcMethod === "tools/call" ? getToolNameFromBody(req.body) : undefined;
 
+  if (!bearerToken) {
+    rejectJsonRpc(res, 401, "Bearer authentication required.");
+    return;
+  }
+
   try {
-    if (!sessionId) {
-      if (!isInitializeRequest(req.body)) {
-        console.warn("[mcp-http] rejected POST /mcp: first request was not initialize");
-        console.warn(`[mcp-http] received body: ${formatBodyForLog(req.body)}`);
-        rejectJsonRpc(res, 400, "Initialization request required.");
+    if (isInitializeRequest(req.body)) {
+      if (sessionId) {
+        rejectJsonRpc(res, 400, "Initialization requests must not include a session ID.");
         return;
       }
 
-      const server = createServer(httpClient, version, "http");
+      const server = createServer(
+        createQurlClientFromBearerToken(bearerToken, { qurlApiUrl: defaultQurlApiUrl }),
+        version,
+        "http",
+      );
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
       });
@@ -253,7 +288,9 @@ app.post("/mcp", async (req, res) => {
       };
 
       await server.connect(transport);
-      await withRequestAuth(undefined, () => transport.handleRequest(req, res, req.body));
+      await withRequestAuth(undefined, bearerToken, () =>
+        transport.handleRequest(req, res, req.body),
+      );
 
       if (!transport.sessionId) {
         console.warn("[mcp-http] initialize completed without session id");
@@ -264,76 +301,103 @@ app.post("/mcp", async (req, res) => {
       sessions.set(transport.sessionId, {
         transport,
         server,
+        bearerToken,
       });
       console.warn(
-        `[mcp-http session=${transport.sessionId}] initialize completed elapsed=${formatDurationMs(startedAt)}`,
+        `[mcp-http session=${sanitizeLogValue(transport.sessionId)}] initialize completed elapsed=${formatDurationMs(startedAt)}`,
       );
       return;
     }
 
-    const session = sessionId ? sessions.get(sessionId) : undefined;
+    if (!sessionId) {
+      console.warn("[mcp-http] rejected POST /mcp: initialization required");
+      rejectJsonRpc(res, 400, "Initialization request required.");
+      return;
+    }
+
+    const session = sessions.get(sessionId);
     if (!session) {
       logMissingSession(req, req.body);
       rejectJsonRpc(res, 404, REINITIALIZE_MESSAGE);
       return;
     }
+    if (!bearerTokensMatch(bearerToken, session.bearerToken)) {
+      console.warn(
+        `[mcp-http session=${sanitizeLogValue(sessionId)}] rejected request from a different bearer token`,
+      );
+      rejectJsonRpc(res, 403, "This session belongs to a different bearer token.");
+      return;
+    }
 
     if (toolName) {
-      console.warn(`[mcp-http session=${sessionId}] tool call started name=${toolName}`);
+      console.warn(
+        `[mcp-http session=${sanitizeLogValue(sessionId)}] tool call started name=${sanitizeLogValue(toolName)}`,
+      );
     }
-    await withRequestAuth(sessionId, () => session.transport.handleRequest(req, res, req.body));
+    await withRequestAuth(sessionId, bearerToken, () =>
+      session.transport.handleRequest(req, res, req.body),
+    );
     if (toolName) {
       console.warn(
-        `[mcp-http session=${sessionId}] tool call finished name=${toolName} elapsed=${formatDurationMs(startedAt)}`,
+        `[mcp-http session=${sanitizeLogValue(sessionId)}] tool call finished name=${sanitizeLogValue(toolName)} elapsed=${formatDurationMs(startedAt)}`,
       );
     }
-  } catch (error) {
+  } catch {
     if (toolName) {
-      const message = error instanceof Error ? error.message : String(error);
       console.error(
-        `[mcp-http session=${sessionId ?? "(none)"}] tool call failed name=${toolName} elapsed=${formatDurationMs(startedAt)} error=${message}`,
+        `[mcp-http session=${sanitizeLogValue(sessionId ?? "(none)")}] tool call failed name=${sanitizeLogValue(toolName)} elapsed=${formatDurationMs(startedAt)}`,
       );
     }
-    console.error("Error handling MCP POST request", error);
+    console.error("Error handling MCP POST request");
     if (!res.headersSent) {
       rejectJsonRpc(res, 500, "Internal server error.");
     }
   }
 });
 
-app.get("/mcp", async (req, res) => {
+app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   const sessionId = getSessionId(req);
-  const session = sessionId ? sessions.get(sessionId) : undefined;
-  if (!session) {
-    logMissingSession(req);
-    res.status(404).send(REINITIALIZE_MESSAGE);
-    return;
-  }
-
-  try {
-    await withRequestAuth(sessionId, () => session.transport.handleRequest(req, res));
-  } catch (error) {
-    console.error("Error handling MCP GET request", error);
-    if (!res.headersSent) {
-      res.status(500).send("Internal server error.");
-    }
-  }
-});
-
-app.delete("/mcp", async (req, res) => {
-  const sessionId = getSessionId(req);
+  const bearerToken = getAuthenticatedBearerToken(req);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   if (!session || !sessionId) {
     logMissingSession(req);
     res.status(404).send(REINITIALIZE_MESSAGE);
     return;
   }
+  if (!bearerToken || !bearerTokensMatch(bearerToken, session.bearerToken)) {
+    res.status(403).send("This session belongs to a different bearer token.");
+    return;
+  }
 
   try {
-    console.warn(`[mcp-http session=${sessionId}] closing`);
-    await withRequestAuth(sessionId, () => session.transport.handleRequest(req, res));
-  } catch (error) {
-    console.error("Error handling MCP DELETE request", error);
+    await withRequestAuth(sessionId, bearerToken, () => session.transport.handleRequest(req, res));
+  } catch {
+    console.error("Error handling MCP GET request");
+    if (!res.headersSent) {
+      res.status(500).send("Internal server error.");
+    }
+  }
+});
+
+app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
+  const sessionId = getSessionId(req);
+  const bearerToken = getAuthenticatedBearerToken(req);
+  const session = sessionId ? sessions.get(sessionId) : undefined;
+  if (!session || !sessionId) {
+    logMissingSession(req);
+    res.status(404).send(REINITIALIZE_MESSAGE);
+    return;
+  }
+  if (!bearerToken || !bearerTokensMatch(bearerToken, session.bearerToken)) {
+    res.status(403).send("This session belongs to a different bearer token.");
+    return;
+  }
+
+  try {
+    console.warn(`[mcp-http session=${sanitizeLogValue(sessionId)}] closing`);
+    await withRequestAuth(sessionId, bearerToken, () => session.transport.handleRequest(req, res));
+  } catch {
+    console.error("Error handling MCP DELETE request");
     if (!res.headersSent) {
       res.status(500).send("Internal server error.");
     }
@@ -365,7 +429,7 @@ if (config.publicVideo) {
     res.type("html").send(html);
   });
 
-  app.get(videoFileRoute, (req, res) => {
+  app.get(videoFileRoute, publicFileRateLimiter, (req, res) => {
     streamPublicVideo(req, res, config.publicVideo!.filePath);
   });
 }
@@ -375,35 +439,25 @@ app.get("/healthz", (_req, res) => {
 });
 
 app.listen(port, host, () => {
-  console.warn(`qURL MCP HTTP server listening on ${host}:${port}`);
-  console.warn("HTTP MCP auth mode: No Auth");
-  console.warn(`HTTP config loaded from ${configPath}`);
-  console.warn(`Runtime config loaded from ${runtimeConfigPath}`);
-  console.warn(`Configured baseUrl: ${config.baseUrl}`);
-  for (const document of getLegalDocuments()) {
-    console.warn(`Public legal page available at ${config.baseUrl}${document.path}`);
-  }
+  console.warn(`qURL MCP HTTP server listening on ${sanitizeLogValue(host)}:${port}`);
+  console.warn("HTTP MCP auth mode: bearer token (qURL API key passthrough)");
+  console.warn("HTTP and runtime config loaded.");
+  console.warn(`Public legal pages enabled: ${getLegalDocuments().length}`);
   if (config.publicVideo) {
-    console.warn(`Public video page available at ${config.baseUrl}${config.publicVideo.pagePath}`);
-  }
-  console.warn(`Configured qURL API URL: ${defaultQurlApiUrl}`);
-  if (!configuredQurlApiKey) {
-    console.warn(`Warning: ${MISSING_API_KEY_MESSAGE}`);
+    console.warn("Public video page enabled.");
   }
   if (defaultQurlConnectorUrl) {
-    console.warn(`Configured qURL Connector URL: ${defaultQurlConnectorUrl}`);
+    console.warn("qURL Connector uploads enabled.");
   }
   const smtpInspection = inspectSmtpConfig(runtimeConfigPath);
   if (smtpInspection.enabled) {
-    console.warn(
-      `SMTP is configured. host=${smtpInspection.host} port=${smtpInspection.port} secure=${smtpInspection.secure} user=${smtpInspection.username ?? "(missing)"} from=${smtpInspection.fromEmail ?? "(missing)"}`,
-    );
+    console.warn("SMTP is configured.");
   } else {
     console.warn(
       `SMTP is not configured. Missing fields: ${smtpInspection.missingFields.join(", ") || "(unknown)"}`,
     );
   }
   if (config.allowedHosts?.length) {
-    console.warn(`Allowed hosts: ${config.allowedHosts.join(", ")}`);
+    console.warn(`Host allowlist enabled with ${config.allowedHosts.length} entries.`);
   }
 });

@@ -8,11 +8,6 @@ export interface PassthroughBearerAuthConfig {
   qurlApiUrl: string;
 }
 
-function maskToken(token: string): string {
-  if (token.length <= 10) return `${token.slice(0, 2)}***`;
-  return `${token.slice(0, 6)}...${token.slice(-4)}`;
-}
-
 export function createPassthroughBearerVerifier(config: PassthroughBearerAuthConfig): {
   verifyAccessToken(token: string): Promise<AuthInfo>;
 } {

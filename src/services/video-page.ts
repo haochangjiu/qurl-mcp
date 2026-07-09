@@ -21,10 +21,7 @@ export function getPublicVideoFileRoute(pagePath: string): string {
   return `${pagePath.replace(/\/+$/, "") || "/media/video"}/file`;
 }
 
-export function renderPublicVideoPageHtml(
-  config: PublicVideoPageConfig,
-  baseUrl: string,
-): string {
+export function renderPublicVideoPageHtml(config: PublicVideoPageConfig, baseUrl: string): string {
   const canonicalUrl = new URL(config.pagePath, baseUrl).toString();
   const videoUrl = new URL(getPublicVideoFileRoute(config.pagePath), baseUrl).toString();
   const fileName = basename(config.filePath);

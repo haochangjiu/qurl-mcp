@@ -116,6 +116,7 @@ describe("sendEmailMessage", () => {
     expect(nodemailerMocks.sendMail).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        from: { name: "qURL", address: "noreply@example.com" },
         to: "alice@example.com",
         subject: "Secure link ready",
       }),

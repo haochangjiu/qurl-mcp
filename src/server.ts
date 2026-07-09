@@ -63,7 +63,12 @@ const sharedToolFactories = [
   terminateQurlSessionsTool,
 ] satisfies ToolFactory[];
 
-export const toolFactories = [...sharedToolFactories, uploadFileQurlTool, uploadFileDataQurlTool, uploadTextQurlTool];
+export const toolFactories = [
+  ...sharedToolFactories,
+  uploadFileQurlTool,
+  uploadFileDataQurlTool,
+  uploadTextQurlTool,
+];
 
 export function getToolFactoriesForMode(mode: ServerMode): ToolFactory[] {
   if (mode === "http") {

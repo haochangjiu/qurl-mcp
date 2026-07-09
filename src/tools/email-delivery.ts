@@ -34,8 +34,11 @@ export async function maybeDeliverToolEmail(
   if (!input.delivery) return undefined;
 
   const subject = input.delivery.subject?.trim() || input.defaultSubject;
-  const sections = [input.delivery.message?.trim(), input.detailLines.join("\n"), "Sent by qURL."]
-    .filter((section): section is string => typeof section === "string" && section.length > 0);
+  const sections = [
+    input.delivery.message?.trim(),
+    input.detailLines.join("\n"),
+    "Sent by qURL.",
+  ].filter((section): section is string => typeof section === "string" && section.length > 0);
 
   return sendEmailMessage({
     to: input.delivery.to,

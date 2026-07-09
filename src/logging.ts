@@ -1,4 +1,4 @@
-type ConsoleMethodName = "log" | "warn" | "error" | "info" | "debug";
+type ConsoleMethodName = "warn" | "error";
 
 const PATCH_FLAG = Symbol.for("qurl-mcp.consoleTimestampPatched");
 
@@ -28,17 +28,22 @@ function prefixArgs(args: unknown[]): unknown[] {
 }
 
 export function installTimestampedConsole(): void {
-  const globalConsole = console as Console & { [PATCH_FLAG]?: boolean };
+  const globalConsole = console as typeof console & { [PATCH_FLAG]?: boolean };
   if (globalConsole[PATCH_FLAG]) {
     return;
   }
 
-  const methods: ConsoleMethodName[] = ["log", "warn", "error", "info", "debug"];
+  // stdout is reserved for JSON-RPC in stdio mode. Only patch the two methods
+  // this project permits, both of which write to stderr in Node.js.
+  const methods: ConsoleMethodName[] = ["warn", "error"];
   for (const method of methods) {
-    const original = console[method].bind(console);
-    console[method] = ((...args: unknown[]) => original(...prefixArgs(args))) as Console[typeof method];
+    const original = globalConsole[method].bind(globalConsole);
+    Object.defineProperty(globalConsole, method, {
+      configurable: true,
+      value: (...args: unknown[]) => original(...prefixArgs(args)),
+      writable: true,
+    });
   }
 
   globalConsole[PATCH_FLAG] = true;
 }
-

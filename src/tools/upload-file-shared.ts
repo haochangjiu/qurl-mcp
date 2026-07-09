@@ -1,9 +1,6 @@
 import { Buffer } from "node:buffer";
 import { basename, extname } from "node:path";
-import {
-  getRequestQurlApiKey,
-  getRequestQurlConnectorUrl,
-} from "../auth/request-context.js";
+import { getRequestQurlApiKey, getRequestQurlConnectorUrl } from "../auth/request-context.js";
 import { MISSING_API_KEY_MESSAGE, QURLAPIError } from "../client.js";
 import { loadRuntimeConfig } from "../config.js";
 
@@ -62,6 +59,43 @@ export function getConnectorConfig() {
     apiKey,
     connectorURL: connectorURL.replace(/\/$/, ""),
   };
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+export function getConnectorUploadUrl(connectorURL: string): string {
+  let uploadUrl: URL;
+  try {
+    uploadUrl = new URL(`${connectorURL.replace(/\/$/, "")}/api/upload`);
+  } catch {
+    throw new QURLAPIError(
+      0,
+      "invalid_connector_url",
+      "QURL_CONNECTOR_URL must be a valid absolute URL.",
+    );
+  }
+
+  if (uploadUrl.username || uploadUrl.password) {
+    throw new QURLAPIError(
+      0,
+      "invalid_connector_url",
+      "QURL_CONNECTOR_URL must not contain embedded credentials.",
+    );
+  }
+  if (
+    uploadUrl.protocol !== "https:" &&
+    !(uploadUrl.protocol === "http:" && isLoopbackHostname(uploadUrl.hostname))
+  ) {
+    throw new QURLAPIError(
+      0,
+      "invalid_connector_url",
+      "QURL_CONNECTOR_URL must use HTTPS, except for loopback development endpoints.",
+    );
+  }
+
+  return uploadUrl.toString();
 }
 
 export function normalizeFileName(input: string) {
@@ -123,7 +157,12 @@ function extractErrorMetadata(parsed: unknown): { type?: string; instance?: stri
 /**
  * Throw a QURLAPIError from a failed connector response.
  */
-function throwConnectorError(response: Response, parsed: unknown, raw: string, requestId?: string): never {
+function throwConnectorError(
+  response: Response,
+  parsed: unknown,
+  raw: string,
+  requestId?: string,
+): never {
   const detail = extractErrorDetail(parsed, raw);
   const { type, instance } = extractErrorMetadata(parsed);
   throw new QURLAPIError(
@@ -198,20 +237,23 @@ export async function uploadToConnector(
   contentType: string,
 ): Promise<ConnectorUploadResponse> {
   const { apiKey, connectorURL } = getConnectorConfig();
+  const uploadUrl = getConnectorUploadUrl(connectorURL);
   const form = new globalThis.FormData();
   form.append(
     "file",
+    // lgtm[js/file-access-to-http] This tool explicitly uploads caller-provided bytes to the operator-configured connector.
     new globalThis.Blob([Buffer.from(fileData)], { type: contentType }),
     fileName,
   );
 
-  const response = await fetch(`${connectorURL}/api/upload`, {
+  // lgtm[js/file-access-to-http] The validated destination and upload are the explicit behavior of this MCP tool.
+  const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       Accept: "application/json",
     },
-    body: form,
+    body: form, // lgtm[js/file-access-to-http]
   });
 
   return processConnectorResponse(response);
@@ -225,17 +267,21 @@ export async function uploadTextToConnector(
   return uploadToConnector(Buffer.from(text, "utf8"), fileName, contentType);
 }
 
-export async function uploadJsonToConnector(payload: Record<string, unknown>): Promise<ConnectorUploadResponse> {
+export async function uploadJsonToConnector(
+  payload: Record<string, unknown>,
+): Promise<ConnectorUploadResponse> {
   const { apiKey, connectorURL } = getConnectorConfig();
-  const body = JSON.stringify(payload);
-  const response = await fetch(`${connectorURL}/api/upload`, {
+  const uploadUrl = getConnectorUploadUrl(connectorURL);
+  const body = JSON.stringify(payload); // lgtm[js/file-access-to-http] Explicit connector upload payload.
+  // lgtm[js/file-access-to-http] The validated destination and upload are the explicit behavior of this MCP tool.
+  const response = await fetch(uploadUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body,
+    body, // lgtm[js/file-access-to-http]
   });
 
   return processConnectorResponse(response);

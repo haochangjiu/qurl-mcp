@@ -72,7 +72,9 @@ export const createQurlSchema = z.object({
   access_policy: accessPolicySchema.optional().describe("Access control policy for the qURL"),
   email_delivery: emailDeliveryInputSchema
     .optional()
-    .describe("Optional email notification settings for sending the generated qURL to one or more recipients."),
+    .describe(
+      "Optional email notification settings for sending the generated qURL to one or more recipients.",
+    ),
 });
 
 export function createQurlTool(client: IQURLClient) {

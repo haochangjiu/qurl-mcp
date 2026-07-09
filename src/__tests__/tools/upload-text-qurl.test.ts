@@ -15,12 +15,14 @@ const fixturePath = resolve("src/__tests__/fixtures/sample.pdf");
 const fixtureSize = statSync(fixturePath).size;
 
 vi.mock("../../services/text-pdf.js", () => ({
-  createTextPdfTempFile: vi.fn().mockImplementation(async ({ fileName }: { fileName?: string }) => ({
-    cleanup: cleanupSpy,
-    fileName: fileName?.replace(/\.[^.]+$/, ".pdf") ?? "content.pdf",
-    filePath: fixturePath,
-    sizeBytes: fixtureSize,
-  })),
+  createTextPdfTempFile: vi
+    .fn()
+    .mockImplementation(async ({ fileName }: { fileName?: string }) => ({
+      cleanup: cleanupSpy,
+      fileName: fileName?.replace(/\.[^.]+$/, ".pdf") ?? "content.pdf",
+      filePath: fixturePath,
+      sizeBytes: fixtureSize,
+    })),
 }));
 
 import { sendEmailMessage } from "../../services/email.js";
@@ -36,12 +38,14 @@ describe("uploadTextQurlTool", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     cleanupSpy.mockClear();
-    vi.mocked(createTextPdfTempFile).mockImplementation(async ({ fileName }: { fileName?: string }) => ({
-      cleanup: cleanupSpy,
-      fileName: fileName?.replace(/\.[^.]+$/, ".pdf") ?? "content.pdf",
-      filePath: fixturePath,
-      sizeBytes: fixtureSize,
-    }));
+    vi.mocked(createTextPdfTempFile).mockImplementation(
+      async ({ fileName }: { fileName?: string }) => ({
+        cleanup: cleanupSpy,
+        fileName: fileName?.replace(/\.[^.]+$/, ".pdf") ?? "content.pdf",
+        filePath: fixturePath,
+        sizeBytes: fixtureSize,
+      }),
+    );
     process.env.QURL_API_KEY = "lv_live_test";
     process.env.QURL_CONNECTOR_URL = "https://connector.test";
     delete process.env.QURL_MCP_CONFIG;
@@ -122,8 +126,8 @@ describe("uploadTextQurlTool", () => {
           Authorization: "Bearer lv_live_test",
         }),
       );
-      const form = uploadInit?.body as FormData;
-      const blob = form.get("file") as File;
+      const form = uploadInit?.body as globalThis.FormData;
+      const blob = form.get("file") as globalThis.File;
       expect(blob.type).toBe("application/pdf");
       expect(blob.name).toBe("hello.pdf");
       expect(blob.size).toBe(fixtureSize);

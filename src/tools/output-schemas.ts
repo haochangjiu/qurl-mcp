@@ -207,7 +207,9 @@ export const mintLinkOutputSchema = z.object({
 });
 
 export const uploadFileQurlOutputSchema = z.object({
-  resource_id: z.string().describe("Stable resource identifier (r_ prefix) returned by the connector"),
+  resource_id: z
+    .string()
+    .describe("Stable resource identifier (r_ prefix) returned by the connector"),
   qurl_id: z.string().describe("Display-friendly qURL ID (q_ prefix) for the minted token"),
   qurl_link: z
     .string()

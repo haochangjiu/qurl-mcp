@@ -48,7 +48,9 @@ export const mintLinkBaseSchema = z.object({
   access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
   email_delivery: emailDeliveryInputSchema
     .optional()
-    .describe("Optional email notification settings for sending the minted access link to one or more recipients."),
+    .describe(
+      "Optional email notification settings for sending the minted access link to one or more recipients.",
+    ),
 });
 
 export const mintLinkSchema = mintLinkBaseSchema.refine(

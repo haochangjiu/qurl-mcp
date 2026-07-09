@@ -45,7 +45,6 @@ export type ConfigFileShape = Partial<{
   maxUploadFileDataBytes: string | number;
   defaultQurlApiUrl: string;
   defaultQurlConnectorUrl: string;
-  qurlApiKey: string;
   smtp: Partial<SmtpConfig>;
   publicVideo: Partial<PublicVideoConfig>;
 }>;
@@ -184,13 +183,17 @@ function normalizePublicPath(value: string | undefined, fallback: string): strin
 function resolvePublicVideoConfig(
   fileConfig: Partial<PublicVideoConfig> | undefined,
 ): PublicVideoConfig | undefined {
-  const filePath = trimString(process.env.QURL_PUBLIC_VIDEO_FILE_PATH) ?? trimString(fileConfig?.filePath);
+  const filePath =
+    trimString(process.env.QURL_PUBLIC_VIDEO_FILE_PATH) ?? trimString(fileConfig?.filePath);
   if (!filePath) {
     return undefined;
   }
 
   return {
-    title: trimString(process.env.QURL_PUBLIC_VIDEO_TITLE) ?? trimString(fileConfig?.title) ?? "Video Showcase",
+    title:
+      trimString(process.env.QURL_PUBLIC_VIDEO_TITLE) ??
+      trimString(fileConfig?.title) ??
+      "Video Showcase",
     pagePath: normalizePublicPath(
       trimString(process.env.QURL_PUBLIC_VIDEO_PAGE_PATH) ?? trimString(fileConfig?.pagePath),
       "/media/video",
@@ -199,8 +202,8 @@ function resolvePublicVideoConfig(
   };
 }
 
-function resolveQurlApiKey(fileConfig: ConfigFileShape): string | undefined {
-  return trimString(process.env.QURL_API_KEY) ?? trimString(fileConfig.qurlApiKey);
+function resolveQurlApiKey(): string | undefined {
+  return trimString(process.env.QURL_API_KEY);
 }
 
 function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpConfig | undefined {
@@ -229,8 +232,7 @@ function resolveSmtpFieldValues(fileConfig: Partial<SmtpConfig> | undefined) {
     secure: parseBoolean(process.env.QURL_SMTP_SECURE ?? fileConfig?.secure),
     username: trimString(process.env.QURL_SMTP_USERNAME) ?? trimString(fileConfig?.username),
     password: trimString(process.env.QURL_SMTP_PASSWORD) ?? trimString(fileConfig?.password),
-    fromEmail:
-      trimString(process.env.QURL_SMTP_FROM_EMAIL) ?? trimString(fileConfig?.fromEmail),
+    fromEmail: trimString(process.env.QURL_SMTP_FROM_EMAIL) ?? trimString(fileConfig?.fromEmail),
     fromName: trimString(process.env.QURL_SMTP_FROM_NAME) ?? trimString(fileConfig?.fromName),
   };
 }
@@ -251,16 +253,12 @@ export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeC
 
   const fileConfig = loadConfigFileWithFallback(configPath);
   const maxUploadFileDataBytes = parseSizeBytes(
-    process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES ??
-      fileConfig.maxUploadFileDataBytes ??
-      "10mb",
+    process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES ?? fileConfig.maxUploadFileDataBytes ?? "10mb",
     DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
     "maxUploadFileDataBytes",
   );
   const defaultQurlApiUrl =
-    process.env.QURL_API_URL?.trim() ||
-    fileConfig.defaultQurlApiUrl ||
-    "https://api.layerv.ai";
+    process.env.QURL_API_URL?.trim() || fileConfig.defaultQurlApiUrl || "https://api.layerv.ai";
   const defaultQurlConnectorUrl =
     process.env.QURL_CONNECTOR_URL?.trim() || fileConfig.defaultQurlConnectorUrl;
 
@@ -268,7 +266,7 @@ export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeC
     maxUploadFileDataBytes,
     defaultQurlApiUrl,
     defaultQurlConnectorUrl,
-    qurlApiKey: resolveQurlApiKey(fileConfig),
+    qurlApiKey: resolveQurlApiKey(),
     smtp: resolveSmtpConfig(fileConfig.smtp),
     publicVideo: resolvePublicVideoConfig(fileConfig.publicVideo),
   };

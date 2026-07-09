@@ -28,7 +28,9 @@ export const uploadFileDataQurlSchema = z.object({
   file_name: z
     .string()
     .min(1)
-    .describe("Filename to register with the connector. `.jpg` and `.jpeg` files should use `image/jpeg`."),
+    .describe(
+      "Filename to register with the connector. `.jpg` and `.jpeg` files should use `image/jpeg`.",
+    ),
   content_type: z
     .enum(supportedMimeTypes)
     .describe(
@@ -59,7 +61,9 @@ export const uploadFileDataQurlSchema = z.object({
   access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
   email_delivery: emailDeliveryInputSchema
     .optional()
-    .describe("Optional email notification settings for sending the uploaded file's qURL to one or more recipients."),
+    .describe(
+      "Optional email notification settings for sending the uploaded file's qURL to one or more recipients.",
+    ),
 });
 
 function getMaxUploadFileDataBytes(): number {

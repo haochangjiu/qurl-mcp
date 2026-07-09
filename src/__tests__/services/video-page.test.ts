@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  getPublicVideoFileRoute,
-  renderPublicVideoPageHtml,
-} from "../../services/video-page.js";
+import { getPublicVideoFileRoute, renderPublicVideoPageHtml } from "../../services/video-page.js";
 
 describe("video page", () => {
   it("derives the public file route from the page path", () => {

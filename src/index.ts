@@ -29,11 +29,9 @@ if (!apiKey) {
 }
 const baseURL = runtimeConfig.defaultQurlApiUrl;
 const smtpInspection = inspectSmtpConfig(runtimeConfigPath);
-console.error(`Runtime config loaded from ${runtimeConfigPath}`);
+console.error("Runtime config loaded.");
 if (smtpInspection.enabled) {
-  console.error(
-    `SMTP is configured. host=${smtpInspection.host} port=${smtpInspection.port} secure=${smtpInspection.secure} user=${smtpInspection.username ?? "(missing)"} from=${smtpInspection.fromEmail ?? "(missing)"}`,
-  );
+  console.error("SMTP is configured.");
 } else {
   console.error(
     `SMTP is not configured. Missing fields: ${smtpInspection.missingFields.join(", ") || "(unknown)"}`,

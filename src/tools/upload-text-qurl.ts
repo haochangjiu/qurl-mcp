@@ -20,12 +20,16 @@ export const uploadTextQurlSchema = z.object({
     .string()
     .min(1)
     .max(1_000_000)
-    .describe("Text content to render into a temporary PDF before uploading to the qURL connector."),
+    .describe(
+      "Text content to render into a temporary PDF before uploading to the qURL connector.",
+    ),
   file_name: z
     .string()
     .min(1)
     .optional()
-    .describe("Filename to register with the connector. The tool will normalize it to a `.pdf` filename."),
+    .describe(
+      "Filename to register with the connector. The tool will normalize it to a `.pdf` filename.",
+    ),
   label: z
     .string()
     .max(500)
@@ -51,7 +55,9 @@ export const uploadTextQurlSchema = z.object({
   access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
   email_delivery: emailDeliveryInputSchema
     .optional()
-    .describe("Optional email notification settings for sending the uploaded text content's qURL to one or more recipients."),
+    .describe(
+      "Optional email notification settings for sending the uploaded text content's qURL to one or more recipients.",
+    ),
 });
 
 export function uploadTextQurlTool(client: IQURLClient) {

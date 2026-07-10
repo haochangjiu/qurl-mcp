@@ -1,10 +1,11 @@
 import { z } from "zod";
 import type { EmailDeliveryResult } from "../email-types.js";
+import { formatErrorForLog } from "../logging.js";
 import { sendEmailMessage } from "../services/email.js";
 
 export const emailDeliveryInputSchema = z.object({
   to: z
-    .array(z.string().email())
+    .array(z.email())
     .min(1)
     .max(100)
     .describe(
@@ -57,9 +58,7 @@ export async function maybeDeliverToolEmail(
     // Link creation has already succeeded when this helper runs. Never turn a
     // delivery failure into a failed tool call because qurl_link is one-shot
     // output that cannot be recovered later.
-    console.error(
-      `Email delivery failed after qURL creation (${error instanceof Error ? error.name : "UnknownError"})`,
-    );
+    console.error(`Email delivery failed after qURL creation (${formatErrorForLog(error)})`);
     const recipients = Array.from(
       new Set(input.delivery.to.map((recipient) => recipient.trim().toLowerCase()).filter(Boolean)),
     );

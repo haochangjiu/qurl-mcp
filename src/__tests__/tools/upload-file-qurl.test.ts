@@ -3,6 +3,7 @@ import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { QURLAPIError } from "../../client.js";
+import { clearRuntimeConfigCache } from "../../config.js";
 import { makeMockClient } from "../helpers.js";
 import { uploadFileQurlSchema, uploadFileQurlTool } from "../../tools/upload-file-qurl.js";
 
@@ -17,6 +18,7 @@ describe("uploadFileQurlTool", () => {
   let tempDir: string | undefined;
 
   beforeEach(() => {
+    clearRuntimeConfigCache();
     vi.restoreAllMocks();
     process.env.QURL_API_KEY = "lv_live_test";
     process.env.QURL_CONNECTOR_URL = "https://connector.test";
@@ -30,6 +32,7 @@ describe("uploadFileQurlTool", () => {
     process.env.QURL_CONNECTOR_URL = originalConnectorUrl;
     process.env.QURL_MCP_CONFIG = originalConfigPath;
     process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES = originalMaxUploadBytes;
+    clearRuntimeConfigCache();
     globalThis.fetch = originalFetch;
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true });

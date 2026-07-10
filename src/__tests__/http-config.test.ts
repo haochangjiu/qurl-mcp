@@ -56,6 +56,25 @@ describe("HTTP listener config", () => {
     expect(loadHttpServerConfig(configPath).allowedHosts).toEqual(["mcp.example.com"]);
   });
 
+  it("uses one loopback definition for listener and public base URLs", () => {
+    const configPath = join(tempDir, "http.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        host: "127.0.0.2",
+        baseUrl: "http://127.0.0.5:3000",
+      }),
+    );
+
+    expect(loadHttpServerConfig(configPath)).toEqual(
+      expect.objectContaining({
+        host: "127.0.0.2",
+        baseUrl: "http://127.0.0.5:3000",
+        allowedHosts: undefined,
+      }),
+    );
+  });
+
   it("parses bounded proxy, session, and rate-limit values", () => {
     const configPath = join(tempDir, "http.json");
     writeFileSync(

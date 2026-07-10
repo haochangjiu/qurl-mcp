@@ -1,4 +1,5 @@
 import express from "express";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { rateLimit } from "express-rate-limit";
 import { statSync } from "node:fs";
 import { createServer as createNodeServer, request, type Server } from "node:http";
@@ -375,17 +376,23 @@ describe("HTTP MCP server", () => {
   it("removes sessions on explicit DELETE", async () => {
     const baseUrl = await start();
     const sessionId = await initialize(baseUrl, "lv_live_delete");
+    const close = vi.spyOn(McpServer.prototype, "close");
 
-    const response = await fetch(`${baseUrl}/mcp`, {
-      method: "DELETE",
-      headers: {
-        authorization: "Bearer lv_live_delete",
-        accept: "application/json, text/event-stream",
-        "mcp-session-id": sessionId,
-      },
-    });
-    expect(response.status).toBe(200);
-    expect(getActiveSessionCount()).toBe(0);
+    try {
+      const response = await fetch(`${baseUrl}/mcp`, {
+        method: "DELETE",
+        headers: {
+          authorization: "Bearer lv_live_delete",
+          accept: "application/json, text/event-stream",
+          "mcp-session-id": sessionId,
+        },
+      });
+      expect(response.status).toBe(200);
+      expect(getActiveSessionCount()).toBe(0);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      close.mockRestore();
+    }
   });
 
   it("rejects Host headers outside the loopback allowlist", async () => {

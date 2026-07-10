@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
+import { formatErrorForLog } from "../logging.js";
 import { createTextPdfTempFile } from "../services/text-pdf.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import {
@@ -149,10 +150,7 @@ export function uploadTextQurlTool(
           await pdfFile.cleanup();
         } catch (error) {
           // Cleanup is best-effort and must not turn a successful upload into a tool failure.
-          console.error(
-            "Failed to clean up a temporary text PDF:",
-            error instanceof Error ? error.message : "UnknownError",
-          );
+          console.error(`Failed to clean up a temporary text PDF (${formatErrorForLog(error)})`);
         }
       }
     }),

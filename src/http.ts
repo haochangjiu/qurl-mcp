@@ -8,7 +8,12 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { clearInterval, clearTimeout, setInterval, setTimeout } from "node:timers";
 import { fileURLToPath } from "node:url";
-import { installTimestampedConsole, logInfo } from "./logging.js";
+import {
+  formatErrorForLog,
+  installTimestampedConsole,
+  logInfo,
+  sanitizeLogValue,
+} from "./logging.js";
 import express from "express";
 import {
   hostHeaderValidation,
@@ -45,10 +50,10 @@ type SessionContext = {
   credentialValidated: boolean;
 };
 
-// Keep this aligned with the qURL API-key format. Bearer-form credentials are
-// redacted independently, but a bare key in an upstream error depends on this
-// prefix-aware pattern.
-const QURL_API_KEY_PATTERN = /\blv_[A-Za-z0-9_-]+\b/g;
+type AuthorizedSession = {
+  session: SessionContext;
+  bearerToken: string;
+};
 
 function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
   // Coarse outer bound: base64 inflates payloads by roughly 4/3, with extra
@@ -157,21 +162,6 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
 
   function formatDurationMs(startedAt: number): string {
     return `${Date.now() - startedAt}ms`;
-  }
-
-  function sanitizeLogValue(value: string): string {
-    return value
-      .replace(/Bearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
-      .replace(QURL_API_KEY_PATTERN, "[REDACTED]")
-      .replace(/[\r\n\u2028\u2029]/g, " ")
-      .slice(0, 512);
-  }
-
-  function formatErrorForLog(error: unknown): string {
-    if (!(error instanceof Error)) return "UnknownError";
-    const name = sanitizeLogValue(error.name || "Error");
-    const message = sanitizeLogValue(error.message || "no message");
-    return `${name}: ${message}`;
   }
 
   function getAuthenticatedBearerToken(req: express.Request): string | undefined {
@@ -306,6 +296,21 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     console.warn("[mcp-http] session missing; client must re-initialize");
   }
 
+  function resolveAuthorizedSession(req: express.Request): AuthorizedSession | undefined {
+    const sessionId = getSessionId(req);
+    const bearerToken = getAuthenticatedBearerToken(req);
+    const session = sessions.get(sessionId ?? "");
+    if (!session) {
+      logMissingSession();
+      return undefined;
+    }
+    if (!bearerToken || !bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
+      console.warn("[mcp-http] rejected request from a different bearer token");
+      return undefined;
+    }
+    return { session, bearerToken };
+  }
+
   function withRequestAuth<T>(
     sessionId: string | undefined,
     qurlApiKey: string,
@@ -329,7 +334,6 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   }
 
   app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, parseMcpJsonBody, async (req, res) => {
-    const sessionId = getSessionId(req);
     const bearerToken = getAuthenticatedBearerToken(req);
     const startedAt = Date.now();
     const rpcMethod = getJsonRpcMethod(req.body);
@@ -430,23 +434,18 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
         }
       }
 
-      const session = sessions.get(sessionId ?? "");
-      if (!session) {
-        logMissingSession();
+      const authorizedSession = resolveAuthorizedSession(req);
+      if (!authorizedSession) {
         rejectJsonRpc(res, 404, REINITIALIZE_MESSAGE);
         return;
       }
-      if (!bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
-        console.warn("[mcp-http] rejected request from a different bearer token");
-        rejectJsonRpc(res, 404, REINITIALIZE_MESSAGE);
-        return;
-      }
+      const { session, bearerToken: sessionBearerToken } = authorizedSession;
 
       session.lastActivityAt = Date.now();
       if (toolName) logInfo("[mcp-http] tool call started");
       session.activeRequests += 1;
       try {
-        await withRequestAuth(session.sessionId, bearerToken, () =>
+        await withRequestAuth(session.sessionId, sessionBearerToken, () =>
           session.transport.handleRequest(req, res, req.body),
         );
       } finally {
@@ -466,18 +465,12 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   });
 
   app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
-    const sessionId = getSessionId(req);
-    const bearerToken = getAuthenticatedBearerToken(req);
-    const session = sessions.get(sessionId ?? "");
-    if (!session) {
-      logMissingSession();
+    const authorizedSession = resolveAuthorizedSession(req);
+    if (!authorizedSession) {
       res.status(404).send(REINITIALIZE_MESSAGE);
       return;
     }
-    if (!bearerToken || !bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
-      res.status(404).send(REINITIALIZE_MESSAGE);
-      return;
-    }
+    const { session, bearerToken } = authorizedSession;
 
     try {
       session.lastActivityAt = Date.now();
@@ -499,23 +492,16 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   });
 
   app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
-    const sessionId = getSessionId(req);
-    const bearerToken = getAuthenticatedBearerToken(req);
-    const session = sessions.get(sessionId ?? "");
-    if (!session) {
-      logMissingSession();
+    const authorizedSession = resolveAuthorizedSession(req);
+    if (!authorizedSession) {
       res.status(404).send(REINITIALIZE_MESSAGE);
       return;
     }
-    if (!bearerToken || !bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
-      res.status(404).send(REINITIALIZE_MESSAGE);
-      return;
-    }
+    const { session, bearerToken } = authorizedSession;
 
     try {
       logInfo("[mcp-http] closing session");
       session.lastActivityAt = Date.now();
-      session.activeRequests += 1;
       await withRequestAuth(session.sessionId, bearerToken, () =>
         session.transport.handleRequest(req, res),
       );
@@ -525,11 +511,11 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
         res.status(500).send("Internal server error.");
       }
     } finally {
-      // `transport.handleRequest()` for DELETE already closes the underlying
-      // transport/session in the SDK. Closing the server again here can recurse
-      // back into the same transport close path.
-      sessions.delete(session.sessionId);
-      session.activeRequests = Math.max(0, session.activeRequests - 1);
+      // The SDK handles DELETE by closing the transport first; its Protocol
+      // onclose hook then clears the server's transport reference. closeSession
+      // removes our registry reference before calling server.close(), making
+      // that final ownership cleanup idempotent and safe if SDK behavior changes.
+      await closeSession(session.sessionId);
     }
   });
 
@@ -578,17 +564,18 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   }
 
   if (config.publicVideo) {
-    const videoPagePath = config.publicVideo.pagePath;
+    const publicVideo = config.publicVideo;
+    const videoPagePath = publicVideo.pagePath;
     const videoFileRoute = getPublicVideoFileRoute(videoPagePath);
 
     app.get(videoPagePath, (_req, res) => {
-      const html = renderPublicVideoPageHtml(config.publicVideo!, baseUrl);
+      const html = renderPublicVideoPageHtml(publicVideo, baseUrl);
       setPublicPageSecurityHeaders(res);
       res.type("html").send(html);
     });
 
     app.get(videoFileRoute, publicFileRateLimiter, (req, res) => {
-      streamPublicVideo(req, res, config.publicVideo!.filePath);
+      streamPublicVideo(req, res, publicVideo.filePath);
     });
   }
 

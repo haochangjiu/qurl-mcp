@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
+import { formatErrorForLog } from "../logging.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import {
   toStructuredContent,
@@ -220,8 +221,7 @@ export function uploadFileDataQurlTool(
       } catch (err) {
         // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
         console.error(
-          `Failed to fetch qurl_site for resource ${upload.resource_id}:`,
-          err instanceof Error ? err.message : err,
+          `Failed to fetch qurl_site for resource ${upload.resource_id} (${formatErrorForLog(err)})`,
         );
         qurlSite = undefined;
       }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { logInfo } from "../logging.js";
+import { formatErrorForLog, logInfo, sanitizeLogValue } from "../logging.js";
 
 describe("logging", () => {
   afterEach(() => {
@@ -15,5 +15,14 @@ describe("logging", () => {
     logInfo("ready");
 
     expect(write).toHaveBeenCalledWith("2026-07-10 06:30:45.123 UTC ready\n");
+  });
+
+  it("redacts credentials and flattens untrusted error text", () => {
+    expect(sanitizeLogValue("Bearer secret-token\nlv_live_secret")).toBe(
+      "Bearer [REDACTED] [REDACTED]",
+    );
+    expect(formatErrorForLog(new Error("failed with lv_live_secret\r\nnext"))).toBe(
+      "Error: failed with [REDACTED]  next",
+    );
   });
 });

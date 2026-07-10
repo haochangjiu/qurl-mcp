@@ -167,6 +167,11 @@ transport encryption; use HTTPS whenever the traffic is not already protected
 by a trusted private transport. Upload connector URLs remain HTTPS-only except
 for loopback development endpoints.
 
+API and connector base URLs that contain embedded credentials, a query string,
+or a fragment are now rejected during startup. Deployments that previously used
+one of those unusual URL forms must move credentials to `QURL_API_KEY` and keep
+the configured service URL to its origin and optional path prefix.
+
 ### SMTP Settings
 
 | Field                          | Purpose                                                                      |
@@ -238,6 +243,23 @@ When configured, the HTTP server additionally exposes:
 | `unvalidatedSessionTtlMs`      | Absolute validation deadline for never-validated bearer sessions (default 1 minute) |
 | `mcpRateLimitPerMinute`        | Per-client `/mcp` request limit (default `120`)                                     |
 | `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`)                               |
+
+HTTP fields have matching environment overrides:
+
+| Environment variable                         | Config field                       |
+| -------------------------------------------- | ---------------------------------- |
+| `MCP_PORT`                                   | `port`                             |
+| `MCP_HOST`                                   | `host`                             |
+| `MCP_BASE_URL`                               | `baseUrl`                          |
+| `MCP_ALLOWED_HOSTS`                          | `allowedHosts`                     |
+| `MCP_TRUST_PROXY_HOPS`                       | `trustProxyHops`                   |
+| `MCP_MAX_SESSIONS`                           | `maxSessions`                      |
+| `MCP_MAX_UNVALIDATED_SESSIONS`               | `maxUnvalidatedSessions`           |
+| `MCP_SESSION_IDLE_TTL_MS`                    | `sessionIdleTtlMs`                 |
+| `MCP_UNVALIDATED_SESSION_TTL_MS`             | `unvalidatedSessionTtlMs`          |
+| `MCP_RATE_LIMIT_PER_MINUTE`                  | `mcpRateLimitPerMinute`            |
+| `MCP_PUBLIC_FILE_RATE_LIMIT_PER_MINUTE`      | `publicFileRateLimitPerMinute`     |
+| `MCP_MAX_UPLOAD_FILE_DATA_BYTES`             | `maxUploadFileDataBytes` (shared)  |
 
 The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 `allowedHosts` is explicitly configured. Set `trustProxyHops` (or

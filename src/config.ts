@@ -178,7 +178,7 @@ function parsePositiveInteger(value: unknown): number | undefined {
   return parsed;
 }
 
-function trimString(value: unknown): string | undefined {
+export function trimString(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new Error("Configuration string fields must be strings.");
   const trimmed = value.trim();

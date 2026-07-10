@@ -1,9 +1,11 @@
 import {
   getDefaultConfigPath,
+  isLoopbackHostname,
   loadRuntimeConfig,
   normalizePublicPath,
   parseAllowedHosts,
   parseConfigFile,
+  trimString,
   type PublicVideoConfig,
 } from "./config.js";
 import { resolve } from "node:path";
@@ -53,10 +55,6 @@ function parseBoundedInteger(
   return parsed;
 }
 
-function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
-}
-
 function normalizeAllowedHosts(hosts: unknown): string[] | undefined {
   if (!hosts) return undefined;
   if (!Array.isArray(hosts) || hosts.some((host) => typeof host !== "string")) {
@@ -93,15 +91,13 @@ function normalizeBaseUrl(value: unknown): string {
   if (url.username || url.password || url.search || url.hash) {
     throw new Error("MCP_BASE_URL/baseUrl must not include credentials, a query, or a fragment.");
   }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHost(url.hostname))) {
+  if (
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && isLoopbackHostname(url.hostname))
+  ) {
     throw new Error("MCP_BASE_URL/baseUrl must use HTTPS except for loopback development URLs.");
   }
   return url.toString().replace(/\/$/, "");
-}
-
-function trimString(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
 }
 
 function resolvePublicVideoFromHttpConfig(
@@ -150,7 +146,7 @@ export function loadHttpServerConfig(configPath = getDefaultHttpConfigPath()): H
   const allowedHosts = normalizeAllowedHosts(
     parseAllowedHosts(process.env.MCP_ALLOWED_HOSTS) ?? fileConfig.allowedHosts,
   );
-  if (!isLoopbackHost(host) && !allowedHosts) {
+  if (!isLoopbackHostname(host) && !allowedHosts) {
     throw new Error("allowedHosts is required when the HTTP listener is not bound to loopback.");
   }
   const publicVideo = runtimeConfig.publicVideo ?? resolvePublicVideoFromHttpConfig(fileConfig);

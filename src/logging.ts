@@ -1,6 +1,10 @@
 type ConsoleMethodName = "warn" | "error";
 
 const PATCH_FLAG = Symbol.for("qurl-mcp.consoleTimestampPatched");
+// Keep this aligned with the qURL API-key format. Bearer-form credentials are
+// redacted independently, but a bare key in an upstream error depends on this
+// prefix-aware pattern.
+const QURL_API_KEY_PATTERN = /\blv_[A-Za-z0-9_-]+\b/g;
 
 function formatTimestamp(date = new Date()): string {
   return date.toISOString().replace("T", " ").replace("Z", " UTC");
@@ -8,6 +12,21 @@ function formatTimestamp(date = new Date()): string {
 
 export function logInfo(message: string): void {
   process.stderr.write(`${formatTimestamp()} ${message}\n`);
+}
+
+export function sanitizeLogValue(value: string): string {
+  return value
+    .replace(/Bearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
+    .replace(QURL_API_KEY_PATTERN, "[REDACTED]")
+    .replace(/[\r\n\u2028\u2029]/g, " ")
+    .slice(0, 512);
+}
+
+export function formatErrorForLog(error: unknown): string {
+  if (!(error instanceof Error)) return "UnknownError";
+  const name = sanitizeLogValue(error.name || "Error");
+  const message = sanitizeLogValue(error.message || "no message");
+  return `${name}: ${message}`;
 }
 
 function prefixArgs(args: unknown[]): unknown[] {

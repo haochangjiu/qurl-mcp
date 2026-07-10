@@ -2,6 +2,7 @@ import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
+import { formatErrorForLog } from "../logging.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
 import {
@@ -114,8 +115,7 @@ export async function uploadLocalFileAndMint(
   } catch (err) {
     // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
     console.error(
-      `Failed to fetch qurl_site for resource ${upload.resource_id}:`,
-      err instanceof Error ? err.message : err,
+      `Failed to fetch qurl_site for resource ${upload.resource_id} (${formatErrorForLog(err)})`,
     );
     qurlSite = undefined;
   }

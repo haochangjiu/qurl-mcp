@@ -6,12 +6,7 @@ import {
   getRequestQurlConnectorUrl,
 } from "../auth/request-context.js";
 import { MISSING_API_KEY_MESSAGE, QURLAPIError } from "../client.js";
-import {
-  DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
-  isLoopbackHostname,
-  loadRuntimeConfig,
-  parseSizeBytes,
-} from "../config.js";
+import { isLoopbackHostname, loadRuntimeConfig } from "../config.js";
 import { RESOURCE_ID_PATTERN } from "./_shared.js";
 
 export const supportedMimeTypes = [
@@ -138,13 +133,6 @@ export function inferContentType(filePath: string) {
 export function getMaxUploadFileBytes(): number {
   const requestScoped = getRequestMaxUploadFileDataBytes();
   if (requestScoped) return requestScoped;
-  if (process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES) {
-    return parseSizeBytes(
-      process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES,
-      DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
-      "MCP_MAX_UPLOAD_FILE_DATA_BYTES",
-    );
-  }
   return loadRuntimeConfig().maxUploadFileDataBytes;
 }
 
@@ -194,32 +182,18 @@ function parseJsonBody(raw: string): unknown {
   }
 }
 
-/**
- * Extract error details from connector error response body.
- */
-function extractErrorDetail(parsed: unknown): string | undefined {
-  const errorBody = (parsed ?? {}) as ConnectorErrorBody;
-  return (
-    errorBody.error?.detail ?? errorBody.error?.message ?? errorBody.detail ?? errorBody.message
-  );
-}
-
-/**
- * Extract error code from connector error response body.
- */
-function extractErrorCode(parsed: unknown): string {
-  const errorBody = (parsed ?? {}) as ConnectorErrorBody;
-  return errorBody.error?.code ?? errorBody.code ?? "connector_upload_failed";
-}
-
-/**
- * Extract error type and instance from connector error response body.
- */
-function extractErrorMetadata(parsed: unknown): { type?: string; instance?: string } {
-  const errorBody = (parsed ?? {}) as ConnectorErrorBody;
+function extractConnectorError(parsed: unknown): {
+  code: string;
+  detail?: string;
+  type?: string;
+  instance?: string;
+} {
+  const body = (parsed ?? {}) as ConnectorErrorBody;
   return {
-    type: errorBody.error?.type,
-    instance: errorBody.error?.instance,
+    code: body.error?.code ?? body.code ?? "connector_upload_failed",
+    detail: body.error?.detail ?? body.error?.message ?? body.detail ?? body.message,
+    type: body.error?.type,
+    instance: body.error?.instance,
   };
 }
 
@@ -227,11 +201,10 @@ function extractErrorMetadata(parsed: unknown): { type?: string; instance?: stri
  * Throw a QURLAPIError from a failed connector response.
  */
 function throwConnectorError(response: Response, parsed: unknown, requestId?: string): never {
-  const detail = extractErrorDetail(parsed);
-  const { type, instance } = extractErrorMetadata(parsed);
+  const { code, detail, type, instance } = extractConnectorError(parsed);
   throw new QURLAPIError(
     response.status,
-    extractErrorCode(parsed),
+    code,
     detail || `Connector upload failed with HTTP ${response.status}`,
     type,
     instance,

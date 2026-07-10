@@ -110,17 +110,24 @@ function normalizeBase64Input(input: string): {
   // Step 2: Remove whitespace (base64 from copy-paste often has line breaks)
   const withoutWhitespace = withoutDataUrl.replace(/\s+/g, "");
 
-  // Step 3: Convert URL-safe base64 to standard base64
-  // URL-safe uses '-' instead of '+' and '_' instead of '/'
-  const normalized = withoutWhitespace.replace(/-/g, "+").replace(/_/g, "/");
-  if (!normalized) {
+  if (!withoutWhitespace) {
     throw new Error("file_base64 must not be empty");
   }
 
-  // Step 4: Validate character set (A-Z, a-z, 0-9, +, /, and up to 2 trailing =)
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) {
+  // Step 3: Validate one base64 alphabet. Mixed standard and URL-safe
+  // alphabets are ambiguous and are rejected instead of silently coerced.
+  const usesStandardAlphabet = /[+/]/.test(withoutWhitespace);
+  const usesUrlSafeAlphabet = /[-_]/.test(withoutWhitespace);
+  if (
+    (usesStandardAlphabet && usesUrlSafeAlphabet) ||
+    !/^[A-Za-z0-9+/_-]*={0,2}$/.test(withoutWhitespace)
+  ) {
     throw new Error("file_base64 must be valid base64-encoded content");
   }
+
+  // Step 4: Convert URL-safe base64 to standard base64. URL-safe uses '-'
+  // instead of '+' and '_' instead of '/'.
+  const normalized = withoutWhitespace.replace(/-/g, "+").replace(/_/g, "/");
 
   // Step 5: Validate and fix padding
   // Base64 length must be divisible by 4. Valid lengths mod 4 are: 0, 2, 3

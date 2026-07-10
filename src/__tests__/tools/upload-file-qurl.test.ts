@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -164,6 +164,16 @@ describe("uploadFileQurlTool", () => {
       await expect(tool.handler({ file_path: fixturePath })).rejects.toThrow(
         "File exceeds the configured upload size limit",
       );
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it("rejects symbolic links instead of following them", async () => {
+      const symlinkPath = join(tempDir!, "linked-sample.pdf");
+      symlinkSync(fixturePath, symlinkPath);
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileQurlTool(makeMockClient());
+
+      await expect(tool.handler({ file_path: symlinkPath })).rejects.toThrow("symbolic link");
       expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 

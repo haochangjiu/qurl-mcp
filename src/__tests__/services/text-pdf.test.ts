@@ -26,6 +26,19 @@ describe("createTextPdfTempFile", () => {
     expect(existsSync(result.filePath)).toBe(false);
   });
 
+  it("removes control characters from filenames and PDF title metadata", async () => {
+    const end = vi.spyOn(PDFDocument.prototype, "end");
+    const result = await createTextPdfTempFile({
+      content: "safe content",
+      fileName: "report\u0000\n.pdf",
+      title: "Quarterly\u0000\nReport",
+    });
+
+    expect(result.fileName).toBe("report .pdf");
+    expect(end.mock.instances[0].info.Title).toBe("Quarterly Report");
+    await result.cleanup();
+  });
+
   it("ships with a bundled font asset for cross-platform rendering", () => {
     const bundledFont = resolve(process.cwd(), "assets", "fonts", "NotoSansSC-VF.ttf");
     expect(existsSync(bundledFont)).toBe(true);

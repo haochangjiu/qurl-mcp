@@ -179,6 +179,15 @@ function parsePositiveInteger(value: unknown): number | undefined {
   return parsed;
 }
 
+function parseSmtpPort(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const port = parsePositiveInteger(value);
+  if (port === undefined || port > 65_535) {
+    throw new Error("SMTP port must be an integer between 1 and 65535.");
+  }
+  return port;
+}
+
 export function trimString(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new Error("Configuration string fields must be strings.");
@@ -187,11 +196,19 @@ export function trimString(value: unknown): string | undefined {
 }
 
 export function isLoopbackHostname(hostname: string): boolean {
-  const normalized = hostname
+  let normalized = hostname
     .trim()
     .toLowerCase()
     .replace(/^\[(.*)\]$/, "$1");
-  if (normalized === "localhost" || normalized === "::1") return true;
+  if (normalized === "localhost") return true;
+  if (isIP(normalized) === 6) {
+    // WHATWG URL parsing canonicalizes expanded IPv6 spellings, including
+    // IPv4-mapped addresses, without performing DNS resolution.
+    normalized = new URL("http://[" + normalized + "]").hostname.replace(/^\[(.*)\]$/, "$1");
+  }
+  if (normalized === "::1") return true;
+  const mappedIpv4 = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(normalized);
+  if (mappedIpv4 && Number.parseInt(mappedIpv4[1], 16) >> 8 === 127) return true;
   return isIP(normalized) === 4 && Number(normalized.split(".", 1)[0]) === 127;
 }
 
@@ -286,11 +303,14 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
     return undefined;
   }
 
-  if (!isEmailAddress(fromEmail)) {
+  if (/[\r\n]/.test(fromEmail)) {
+    throw new Error("SMTP fromEmail must be a single line.");
+  }
+  if (fromEmail.length > 254 || !isEmailAddress(fromEmail)) {
     throw new Error("SMTP fromEmail must be a valid email address.");
   }
-  if (fromName && /[\r\n]/.test(fromName)) {
-    throw new Error("SMTP fromName must be a single line.");
+  if (fromName && (fromName.length > 200 || /[\r\n]/.test(fromName))) {
+    throw new Error("SMTP fromName must be a single line of at most 200 characters.");
   }
   const allowedRecipients = parseCsvList(
     process.env.QURL_SMTP_ALLOWED_RECIPIENTS ?? fileConfig?.allowedRecipients,
@@ -341,7 +361,7 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
 function resolveSmtpFieldValues(fileConfig: Partial<SmtpConfig> | undefined) {
   return {
     host: trimString(process.env.QURL_SMTP_HOST) ?? trimString(fileConfig?.host),
-    port: parsePositiveInteger(process.env.QURL_SMTP_PORT ?? fileConfig?.port),
+    port: parseSmtpPort(process.env.QURL_SMTP_PORT ?? fileConfig?.port),
     secure: parseBoolean(process.env.QURL_SMTP_SECURE ?? fileConfig?.secure),
     username: trimString(process.env.QURL_SMTP_USERNAME) ?? trimString(fileConfig?.username),
     password: trimString(process.env.QURL_SMTP_PASSWORD) ?? trimString(fileConfig?.password),

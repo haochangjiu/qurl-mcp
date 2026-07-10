@@ -122,6 +122,52 @@ describe("sendEmailMessage", () => {
     expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
   });
 
+  it("rejects header injection in the configured SMTP from email", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com\r\nBcc: attacker@example.com",
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+
+    await expect(
+      sendEmailMessage({ to: ["alice@example.com"], subject: "Hello", text: "World" }),
+    ).rejects.toThrow("SMTP fromEmail must be a single line");
+    expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
+  });
+
+  it("rejects SMTP ports outside the TCP port range", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 999_999,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+
+    await expect(
+      sendEmailMessage({ to: ["alice@example.com"], subject: "Hello", text: "World" }),
+    ).rejects.toThrow("between 1 and 65535");
+    expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
+  });
+
   it("requires a request-scoped quota principal when server-key fallback is disabled", async () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(

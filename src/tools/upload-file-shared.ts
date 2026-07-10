@@ -161,8 +161,7 @@ export function validateFileSignature(fileData: Uint8Array, contentType: string)
   const bytes = Buffer.from(fileData.buffer, fileData.byteOffset, fileData.byteLength);
   const ascii = (start: number, end: number) => bytes.subarray(start, end).toString("ascii");
   const valid =
-    (contentType === "application/pdf" &&
-      ascii(0, Math.min(bytes.length, 1024)).includes("%PDF-")) ||
+    (contentType === "application/pdf" && ascii(0, 5) === "%PDF-") ||
     (contentType === "image/png" &&
       bytes.length >= 8 &&
       bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||

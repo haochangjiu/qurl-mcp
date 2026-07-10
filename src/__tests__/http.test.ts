@@ -79,6 +79,7 @@ async function requestWithHost(url: string, host: string): Promise<number> {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   await closeAllSessions();
   await Promise.all(
     servers
@@ -204,6 +205,36 @@ describe("HTTP MCP server", () => {
     expect(second.status).toBe(429);
   });
 
+  it("resets MCP rate limits after the one-minute window", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    const limitedRuntime = createHttpRuntime(
+      { ...testConfig, mcpRateLimitPerMinute: 1 },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(limitedRuntime.app);
+
+    expect((await fetch(`${baseUrl}/mcp`, { method: "POST" })).status).toBe(401);
+    expect((await fetch(`${baseUrl}/mcp`, { method: "POST" })).status).toBe(429);
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect((await fetch(`${baseUrl}/mcp`, { method: "POST" })).status).toBe(401);
+  });
+
+  it("ignores spoofed forwarded addresses when proxy trust is disabled", async () => {
+    const directRuntime = createHttpRuntime(
+      { ...testConfig, trustProxyHops: 0, mcpRateLimitPerMinute: 1 },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(directRuntime.app);
+    const postFrom = (forwardedFor: string) =>
+      fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { "x-forwarded-for": forwardedFor },
+      });
+
+    expect((await postFrom("198.51.100.1")).status).toBe(401);
+    expect((await postFrom("203.0.113.9")).status).toBe(429);
+  });
+
   it("uses the configured trusted-proxy hop when keying client rate limits", async () => {
     const proxiedRuntime = createHttpRuntime(
       { ...testConfig, trustProxyHops: 1, mcpRateLimitPerMinute: 1 },
@@ -309,6 +340,32 @@ describe("HTTP MCP server", () => {
     expect(response.status).toBe(404);
   });
 
+  it("expires unvalidated sessions exactly at the configured absolute deadline", async () => {
+    const boundaryRuntime = createHttpRuntime(testConfig, { version: "0.0.0-test" });
+    const baseUrl = await start(boundaryRuntime.app);
+    const createdAt = 1_800_000_000_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(createdAt);
+
+    try {
+      await initialize(baseUrl, "lv_live_ttl_boundary");
+      now.mockRestore();
+
+      expect(
+        await boundaryRuntime.sweepExpiredSessions(
+          createdAt + testConfig.unvalidatedSessionTtlMs - 1,
+        ),
+      ).toBe(0);
+      expect(boundaryRuntime.getActiveSessionCount()).toBe(1);
+      expect(
+        await boundaryRuntime.sweepExpiredSessions(createdAt + testConfig.unvalidatedSessionTtlMs),
+      ).toBe(1);
+      expect(boundaryRuntime.getActiveSessionCount()).toBe(0);
+    } finally {
+      now.mockRestore();
+      await boundaryRuntime.closeAllSessions();
+    }
+  });
+
   it("expires an unvalidated session even while its SSE request is active", async () => {
     const baseUrl = await start();
     const token = "lv_live_pending_sse";
@@ -402,6 +459,8 @@ describe("HTTP MCP server", () => {
     });
     const baseUrl = await start(validatedRuntime.app);
     const token = "lv_live_validated";
+    const lastActivityAt = 1_800_000_000_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(lastActivityAt);
 
     try {
       const sessionId = await initialize(baseUrl, token);
@@ -429,13 +488,19 @@ describe("HTTP MCP server", () => {
       });
 
       expect(created.status).toBe(200);
+      now.mockRestore();
       expect(
         await validatedRuntime.sweepExpiredSessions(
-          Date.now() + testConfig.unvalidatedSessionTtlMs + 1,
+          lastActivityAt + testConfig.sessionIdleTtlMs - 1,
         ),
       ).toBe(0);
       expect(validatedRuntime.getActiveSessionCount()).toBe(1);
+      expect(
+        await validatedRuntime.sweepExpiredSessions(lastActivityAt + testConfig.sessionIdleTtlMs),
+      ).toBe(1);
+      expect(validatedRuntime.getActiveSessionCount()).toBe(0);
     } finally {
+      now.mockRestore();
       await validatedRuntime.closeAllSessions();
     }
   });

@@ -9,8 +9,24 @@ const bundledFontPath = fileURLToPath(
   new URL("../../assets/fonts/NotoSansSC-VF.ttf", import.meta.url),
 );
 
+function sanitizePdfText(input: string, fallback: string): string {
+  let sanitized = "";
+  let replacingControlCharacters = false;
+  for (const character of input) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    const isControlCharacter = codePoint <= 31 || codePoint === 127;
+    if (isControlCharacter) {
+      if (!replacingControlCharacters) sanitized += " ";
+    } else {
+      sanitized += character;
+    }
+    replacingControlCharacters = isControlCharacter;
+  }
+  return sanitized.trim() || fallback;
+}
+
 function ensurePdfFileName(input: string | undefined): string {
-  const baseName = basename((input ?? "content").trim()) || "content";
+  const baseName = basename(sanitizePdfText(input ?? "content", "content")) || "content";
   if (baseName.toLowerCase().endsWith(".pdf")) return baseName;
   const withoutExt = baseName.replace(/\.[^.]+$/, "");
   return `${withoutExt || "content"}.pdf`;
@@ -76,7 +92,7 @@ export async function createTextPdfTempFile(input: {
 
       try {
         doc.pipe(stream);
-        doc.info.Title = input.title ?? fileName;
+        doc.info.Title = sanitizePdfText(input.title ?? fileName, fileName);
         if (fontPath) {
           doc.font(fontPath);
         }

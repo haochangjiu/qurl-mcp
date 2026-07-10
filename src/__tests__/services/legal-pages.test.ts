@@ -23,6 +23,17 @@ describe("legal pages", () => {
     expect(html).toContain("privacy@layerv.ai");
   });
 
+  it("does not carry adversarial base URL path or query text into the canonical link", () => {
+    const html = renderLegalDocumentHtml(
+      "/legal/privacy",
+      'https://qurl.example.com/"><script>alert(1)</script>?next="unsafe"',
+    );
+
+    expect(html).toContain('rel="canonical" href="https://qurl.example.com/legal/privacy"');
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).not.toContain('next="unsafe"');
+  });
+
   it("renders terms of service html", () => {
     const html = renderLegalDocumentHtml("/legal/terms", "https://qurl.example.com");
     expect(html).toContain("<title>Terms of Service for qURL | LayerV</title>");

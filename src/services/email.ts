@@ -74,6 +74,18 @@ export async function sendEmailMessage(
       skipped_reason: "SMTP is not configured.",
     };
   }
+  // Revalidate sender headers at the delivery boundary as defense in depth in
+  // case callers provide a RuntimeConfig through a future non-file source.
+  if (
+    /[\r\n]/.test(smtp.fromEmail) ||
+    smtp.fromEmail.length > 254 ||
+    !isEmailAddress(smtp.fromEmail)
+  ) {
+    throw new Error("SMTP fromEmail must be a valid single-line email address.");
+  }
+  if (smtp.fromName && (/[\r\n]/.test(smtp.fromName) || smtp.fromName.length > 200)) {
+    throw new Error("SMTP fromName must be a single line of at most 200 characters.");
+  }
 
   if (recipients.length > smtp.maxRecipientsPerMessage) {
     return {
@@ -89,6 +101,8 @@ export async function sendEmailMessage(
   const hasRecipientRestrictions = exactAllowlist.size > 0 || domainAllowlist.size > 0;
   const allowedRecipients = recipients.filter((recipient) => {
     if (!hasRecipientRestrictions) return true;
+    // Recipient normalization and config parsing lowercase both sides before
+    // this exact-address/domain comparison.
     const domain = recipient.slice(recipient.lastIndexOf("@") + 1);
     return exactAllowlist.has(recipient) || domainAllowlist.has(domain);
   });

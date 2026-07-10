@@ -1,4 +1,6 @@
-import { open } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { constants } from "node:fs";
+import { lstat, open, type FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
@@ -63,6 +65,29 @@ export const uploadFileQurlSchema = z.object({
 
 export type UploadFileQurlInput = z.infer<typeof uploadFileQurlSchema>;
 
+async function readFileWithinLimit(fileHandle: FileHandle, maxBytes: number): Promise<Uint8Array> {
+  // Read at most one byte beyond the limit. Unlike FileHandle.readFile(), this
+  // remains bounded if the file grows after the initial stat.
+  const buffer = Buffer.allocUnsafe(maxBytes + 1);
+  let totalBytesRead = 0;
+
+  while (totalBytesRead < buffer.byteLength) {
+    const { bytesRead } = await fileHandle.read(
+      buffer,
+      totalBytesRead,
+      buffer.byteLength - totalBytesRead,
+      null,
+    );
+    if (bytesRead === 0) break;
+    totalBytesRead += bytesRead;
+  }
+
+  if (totalBytesRead > maxBytes) {
+    throw new Error("File exceeds the configured upload size limit.");
+  }
+  return buffer.subarray(0, totalBytesRead);
+}
+
 export async function uploadLocalFileAndMint(
   client: IQURLClient,
   input: UploadFileQurlInput,
@@ -81,20 +106,34 @@ export async function uploadLocalFileAndMint(
   validateFileNameContentType(fileName, contentType);
 
   const maxBytes = getMaxUploadFileBytes();
-  const fileHandle = await open(sourcePath, "r");
+  const pathStat = await lstat(sourcePath);
+  if (pathStat.isSymbolicLink()) {
+    throw new Error("file_path must not point to a symbolic link");
+  }
+  if (!pathStat.isFile()) throw new Error("file_path must point to a regular file");
+
+  let fileHandle: FileHandle;
+  try {
+    fileHandle = await open(sourcePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if ((error as { code?: string }).code === "ELOOP") {
+      throw new Error("file_path must not point to a symbolic link");
+    }
+    throw error;
+  }
   let fileData: Uint8Array;
   try {
     const sourceStat = await fileHandle.stat();
     if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
+    if (sourceStat.dev !== pathStat.dev || sourceStat.ino !== pathStat.ino) {
+      throw new Error("file_path changed while it was being opened");
+    }
     if (sourceStat.size > maxBytes) {
       throw new Error("File exceeds the configured upload size limit.");
     }
-    fileData = await fileHandle.readFile();
+    fileData = await readFileWithinLimit(fileHandle, maxBytes);
   } finally {
     await fileHandle.close();
-  }
-  if (fileData.byteLength > maxBytes) {
-    throw new Error("File exceeds the configured upload size limit.");
   }
   validateFileSignature(fileData, contentType);
   const upload = await uploadToConnector(fileData, fileName, contentType, connectorConfig);

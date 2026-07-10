@@ -351,6 +351,17 @@ The `/mcp` endpoint requires `Authorization: Bearer <qURL API key>` on every
 request. The bearer token is bound to the resulting MCP session, so a session
 ID cannot be reused with a different credential.
 
+Initialization accepts any non-empty bearer token and defers authoritative key
+validation to the first downstream qURL API call. Unvalidated-session caps, a
+short validation deadline, and request rate limits bound that pre-validation
+state; the supplied token is forwarded only to the configured qURL API.
+Introspection-only sessions therefore remain unvalidated and are closed at
+`unvalidatedSessionTtlMs`; clients can re-initialize if they need a longer-lived
+session. A session is promoted only after a successful qURL API call—rejected
+or rate-limited calls do not prove the credential valid. Disconnected sessions
+remain registered until `sessionIdleTtlMs` so SSE clients can reconnect, while
+`maxSessions` bounds that reconnect allowance under churn.
+
 Configure remote MCP clients with:
 
 | Setting        | Value                             |

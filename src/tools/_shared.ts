@@ -50,7 +50,8 @@ export type ToolAnnotations = {
 };
 
 // SDK's `structuredContent` is `Record<string, unknown>`; payloads are
-// typed against API response shapes. Single seam for the cast.
+// typed against API response shapes. Each registered tool's zod output schema
+// is the runtime validation guard, and this is the single seam for the cast.
 // `T extends object` rules out primitives and `null` at compile time;
 // `{ length?: never }` rules out arrays. The constraint does *not*
 // reject `Map`/`Set`/`Date`/class instances with non-public state — in

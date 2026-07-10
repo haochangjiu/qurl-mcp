@@ -188,6 +188,12 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       : isInitializeRequest(body);
   }
 
+  function isExclusiveInitializeRequest(body: unknown): boolean {
+    return Array.isArray(body)
+      ? body.length === 1 && isInitializeRequest(body[0])
+      : isInitializeRequest(body);
+  }
+
   function getToolNameFromBody(body: unknown): string | undefined {
     if (!body || typeof body !== "object") return undefined;
     if (!("params" in body) || typeof body.params !== "object" || body.params === null)
@@ -349,7 +355,12 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     }
 
     try {
-      if (containsInitializeRequest(req.body)) {
+      const containsInitialize = containsInitializeRequest(req.body);
+      if (containsInitialize && !isExclusiveInitializeRequest(req.body)) {
+        rejectJsonRpc(res, 400, "Initialize must be sent as the only JSON-RPC message.");
+        return;
+      }
+      if (containsInitialize) {
         await sweepExpiredSessions();
         if (sessions.size + pendingInitializations >= config.maxSessions) {
           rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");

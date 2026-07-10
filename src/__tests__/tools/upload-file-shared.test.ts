@@ -1,7 +1,9 @@
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
   getConnectorUploadUrl,
   normalizeFileName,
+  validateFileSignature,
   validateFileNameContentType,
 } from "../../tools/upload-file-shared.js";
 
@@ -20,7 +22,22 @@ describe("getConnectorUploadUrl", () => {
     expect(getConnectorUploadUrl("http://2130706433:8080")).toBe(
       "http://127.0.0.1:8080/api/upload",
     );
+    expect(getConnectorUploadUrl("http://[0:0:0:0:0:0:0:1]:8080")).toBe(
+      "http://[::1]:8080/api/upload",
+    );
+    expect(getConnectorUploadUrl("http://[::ffff:127.0.0.1]:8080")).toBe(
+      "http://[::ffff:7f00:1]:8080/api/upload",
+    );
     expect(() => getConnectorUploadUrl("http://connector.example.com")).toThrow("must use HTTPS");
+  });
+
+  it("allows operator-configured HTTPS connectors on private networks", () => {
+    // Connector URLs are trusted deployment configuration, not request input;
+    // private HTTPS endpoints are valid for internal connector deployments.
+    expect(getConnectorUploadUrl("https://169.254.169.254")).toBe(
+      "https://169.254.169.254/api/upload",
+    );
+    expect(getConnectorUploadUrl("https://10.0.0.1/qurl")).toBe("https://10.0.0.1/qurl/api/upload");
   });
 
   it("rejects connector URLs with embedded credentials", () => {
@@ -56,5 +73,12 @@ describe("file name validation", () => {
     expect(() => validateFileNameContentType("document.pdf", "image/png")).toThrow(
       "does not match",
     );
+  });
+
+  it("requires the PDF signature at the start of the file", () => {
+    expect(() =>
+      validateFileSignature(Buffer.from("junk before %PDF-1.7"), "application/pdf"),
+    ).toThrow("does not match");
+    expect(() => validateFileSignature(Buffer.from("%PDF-1.7"), "application/pdf")).not.toThrow();
   });
 });

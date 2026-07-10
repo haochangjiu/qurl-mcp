@@ -125,16 +125,6 @@ function getToolNameFromBody(body: unknown): string | undefined {
     : undefined;
 }
 
-function logRequestSummary(req: IncomingMessage, route: string, body?: unknown): void {
-  const method = sanitizeLogValue(req.method ?? "UNKNOWN");
-  const sessionId = sanitizeLogValue(getSessionId(req) ?? "(none)");
-  const rpcMethod = getJsonRpcMethod(body);
-  const toolName = rpcMethod === "tools/call" ? getToolNameFromBody(body) : undefined;
-  const toolSuffix = toolName ? ` tool=${sanitizeLogValue(toolName)}` : "";
-  const rpcSuffix = rpcMethod ? ` rpc=${sanitizeLogValue(rpcMethod)}` : "";
-  console.warn(`[mcp-http session=${sessionId}] ${method} ${route}${rpcSuffix}${toolSuffix}`);
-}
-
 function rejectJsonRpc(res: ServerResponse, statusCode: number, message: string): void {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json");
@@ -210,28 +200,8 @@ function streamPublicVideo(req: express.Request, res: express.Response, filePath
 const REINITIALIZE_MESSAGE =
   "Session not found. The MCP server may have restarted. Please re-initialize the MCP connection.";
 
-function logMissingSession(req: IncomingMessage, body?: unknown): void {
-  const sessionId = sanitizeLogValue(getSessionId(req) ?? "(none)");
-  const method = sanitizeLogValue(req.method ?? "UNKNOWN");
-  const rpcMethod = getJsonRpcMethod(body);
-  const toolName = rpcMethod === "tools/call" ? getToolNameFromBody(body) : undefined;
-  const action =
-    method === "GET"
-      ? "sse stream open/reconnect"
-      : method === "DELETE"
-        ? "session close request"
-        : rpcMethod === "notifications/initialized"
-          ? "client initialization completed notification"
-          : rpcMethod === "initialize"
-            ? "session initialization request"
-            : rpcMethod === "tools/call"
-              ? "tool call request"
-              : "request";
-  const rpcSuffix = rpcMethod ? ` rpc=${sanitizeLogValue(rpcMethod)}` : "";
-  const toolSuffix = toolName ? ` tool=${sanitizeLogValue(toolName)}` : "";
-  console.warn(
-    `[mcp-http session=${sessionId}] session missing; client must re-initialize action="${action}" method=${method}${rpcSuffix}${toolSuffix}`,
-  );
+function logMissingSession(): void {
+  console.warn("[mcp-http] session missing; client must re-initialize");
 }
 
 function withRequestAuth<T>(
@@ -251,7 +221,6 @@ function withRequestAuth<T>(
 }
 
 app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
-  logRequestSummary(req, "/mcp", req.body);
   const sessionId = getSessionId(req);
   const bearerToken = getAuthenticatedBearerToken(req);
   const startedAt = Date.now();
@@ -265,6 +234,8 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
 
   try {
     if (isInitializeRequest(req.body)) {
+      // Bearer authentication has already succeeded; this only enforces MCP session protocol shape.
+      // lgtm[js/user-controlled-bypass]
       if (sessionId) {
         rejectJsonRpc(res, 400, "Initialization requests must not include a session ID.");
         return;
@@ -303,12 +274,12 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
         server,
         bearerToken,
       });
-      console.warn(
-        `[mcp-http session=${sanitizeLogValue(transport.sessionId)}] initialize completed elapsed=${formatDurationMs(startedAt)}`,
-      );
+      console.warn(`[mcp-http] initialize completed elapsed=${formatDurationMs(startedAt)}`);
       return;
     }
 
+    // Bearer authentication has already succeeded; non-initialize requests require a random server-issued session ID.
+    // lgtm[js/user-controlled-bypass]
     if (!sessionId) {
       console.warn("[mcp-http] rejected POST /mcp: initialization required");
       rejectJsonRpc(res, 400, "Initialization request required.");
@@ -317,36 +288,28 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
 
     const session = sessions.get(sessionId);
     if (!session) {
-      logMissingSession(req, req.body);
+      logMissingSession();
       rejectJsonRpc(res, 404, REINITIALIZE_MESSAGE);
       return;
     }
     if (!bearerTokensMatch(bearerToken, session.bearerToken)) {
-      console.warn(
-        `[mcp-http session=${sanitizeLogValue(sessionId)}] rejected request from a different bearer token`,
-      );
+      console.warn("[mcp-http] rejected request from a different bearer token");
       rejectJsonRpc(res, 403, "This session belongs to a different bearer token.");
       return;
     }
 
     if (toolName) {
-      console.warn(
-        `[mcp-http session=${sanitizeLogValue(sessionId)}] tool call started name=${sanitizeLogValue(toolName)}`,
-      );
+      console.warn("[mcp-http] tool call started");
     }
     await withRequestAuth(sessionId, bearerToken, () =>
       session.transport.handleRequest(req, res, req.body),
     );
     if (toolName) {
-      console.warn(
-        `[mcp-http session=${sanitizeLogValue(sessionId)}] tool call finished name=${sanitizeLogValue(toolName)} elapsed=${formatDurationMs(startedAt)}`,
-      );
+      console.warn(`[mcp-http] tool call finished elapsed=${formatDurationMs(startedAt)}`);
     }
   } catch {
     if (toolName) {
-      console.error(
-        `[mcp-http session=${sanitizeLogValue(sessionId ?? "(none)")}] tool call failed name=${sanitizeLogValue(toolName)} elapsed=${formatDurationMs(startedAt)}`,
-      );
+      console.error(`[mcp-http] tool call failed elapsed=${formatDurationMs(startedAt)}`);
     }
     console.error("Error handling MCP POST request");
     if (!res.headersSent) {
@@ -360,7 +323,7 @@ app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   const bearerToken = getAuthenticatedBearerToken(req);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   if (!session || !sessionId) {
-    logMissingSession(req);
+    logMissingSession();
     res.status(404).send(REINITIALIZE_MESSAGE);
     return;
   }
@@ -384,7 +347,7 @@ app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   const bearerToken = getAuthenticatedBearerToken(req);
   const session = sessionId ? sessions.get(sessionId) : undefined;
   if (!session || !sessionId) {
-    logMissingSession(req);
+    logMissingSession();
     res.status(404).send(REINITIALIZE_MESSAGE);
     return;
   }
@@ -394,7 +357,7 @@ app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   }
 
   try {
-    console.warn(`[mcp-http session=${sanitizeLogValue(sessionId)}] closing`);
+    console.warn("[mcp-http] closing session");
     await withRequestAuth(sessionId, bearerToken, () => session.transport.handleRequest(req, res));
   } catch {
     console.error("Error handling MCP DELETE request");

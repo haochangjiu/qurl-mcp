@@ -410,7 +410,7 @@ describe("sendEmailMessage", () => {
     nodemailerMocks.sendMail.mockResolvedValue({ messageId: "msg-1" });
 
     const result = await sendEmailMessage({
-      to: ["allowed@example.com", "blocked@elsewhere.test"],
+      to: ["allowed@example.com", "blocked@mail.example.com", "blocked@elsewhere.test"],
       subject: "Secure link ready",
       text: "Body",
     });
@@ -420,7 +420,14 @@ describe("sendEmailMessage", () => {
       expect.objectContaining({ to: "allowed@example.com" }),
     );
     expect(result.sent).toBe(1);
-    expect(result.failed).toBe(1);
+    expect(result.failed).toBe(2);
+    expect(result.results).toContainEqual(
+      expect.objectContaining({
+        email: "blocked@mail.example.com",
+        success: false,
+        skipped: true,
+      }),
+    );
     expect(result.results).toContainEqual(
       expect.objectContaining({
         email: "blocked@elsewhere.test",

@@ -44,4 +44,8 @@ describe("logging", () => {
     expect(sanitizeLogValue("prefixlv_live_secret suffix")).toBe("prefix[REDACTED] suffix");
     expect(sanitizeConsoleArgument({ token: "lv_live_secret" })).toBe("[object Object]");
   });
+
+  it("bounds every untrusted string log value to 512 characters", () => {
+    expect(sanitizeLogValue("x".repeat(1_000))).toHaveLength(512);
+  });
 });

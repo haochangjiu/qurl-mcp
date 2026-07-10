@@ -139,8 +139,25 @@ describe("HTTP MCP server", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual(
       expect.objectContaining({
-        error: expect.objectContaining({ message: "Request body must be valid JSON." }),
+        error: expect.objectContaining({
+          code: -32700,
+          message: "Request body must be valid JSON.",
+        }),
       }),
+    );
+  });
+
+  it("handles non-string methods and array params as bounded unknown-session requests", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: bearerHeaders("lv_live_adversarial_shape"),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: 42, params: [] }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({ error: expect.objectContaining({ code: -32000 }) }),
     );
   });
 
@@ -622,6 +639,131 @@ describe("HTTP MCP server", () => {
     }
   });
 
+  it("does not idle-evict a validated session while a tool request is active", async () => {
+    let releaseCall!: () => void;
+    const callReleased = new Promise<void>((resolve) => {
+      releaseCall = resolve;
+    });
+    let markCallStarted!: () => void;
+    const callStarted = new Promise<void>((resolve) => {
+      markCallStarted = resolve;
+    });
+    const activeRuntime = createHttpRuntime(testConfig, {
+      version: "0.0.0-test",
+      clientFactory: () =>
+        makeMockClient({
+          createQURL: vi.fn(async () => {
+            markRequestCredentialValidated();
+            markCallStarted();
+            await callReleased;
+            return { data: sampleCreateQURLData() };
+          }),
+        }),
+    });
+    const baseUrl = await start(activeRuntime.app);
+    const token = "lv_live_active_request";
+
+    try {
+      const sessionId = await initialize(baseUrl, token);
+      await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "notifications/initialized",
+          params: {},
+        }),
+      });
+      const toolResponse = fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: "create_qurl",
+            arguments: { target_url: "https://example.com" },
+          },
+        }),
+      });
+      await callStarted;
+
+      expect(
+        await activeRuntime.sweepExpiredSessions(Date.now() + testConfig.sessionIdleTtlMs + 1),
+      ).toBe(0);
+      releaseCall();
+      expect((await toolResponse).status).toBe(200);
+      expect(
+        await activeRuntime.sweepExpiredSessions(Date.now() + testConfig.sessionIdleTtlMs + 1),
+      ).toBe(1);
+    } finally {
+      releaseCall();
+      await activeRuntime.closeAllSessions();
+    }
+  });
+
+  it("reaps a disconnected validated session after the reconnect grace period", async () => {
+    const disconnectedRuntime = createHttpRuntime(testConfig, {
+      version: "0.0.0-test",
+      clientFactory: () =>
+        makeMockClient({
+          createQURL: vi.fn(async () => {
+            markRequestCredentialValidated();
+            return { data: sampleCreateQURLData() };
+          }),
+        }),
+    });
+    const baseUrl = await start(disconnectedRuntime.app);
+    const token = "lv_live_disconnect_grace";
+    const controller = new globalThis.AbortController();
+
+    try {
+      const sessionId = await initialize(baseUrl, token);
+      await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "notifications/initialized",
+          params: {},
+        }),
+      });
+      await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: "create_qurl",
+            arguments: { target_url: "https://example.com" },
+          },
+        }),
+      });
+      const sse = await fetch(`${baseUrl}/mcp`, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "text/event-stream",
+          "mcp-session-id": sessionId,
+        },
+        signal: controller.signal,
+      });
+      expect(sse.status).toBe(200);
+      await sse.body?.cancel();
+      controller.abort();
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 25));
+
+      expect(await disconnectedRuntime.sweepExpiredSessions(Date.now() + 29_000)).toBe(0);
+      expect(await disconnectedRuntime.sweepExpiredSessions(Date.now() + 30_001)).toBe(1);
+      expect(disconnectedRuntime.getActiveSessionCount()).toBe(0);
+    } finally {
+      controller.abort();
+      await disconnectedRuntime.closeAllSessions();
+    }
+  });
+
   it("keeps a session unvalidated after a downstream authentication failure", async () => {
     const rejectedRuntime = createHttpRuntime(testConfig, {
       version: "0.0.0-test",
@@ -698,31 +840,41 @@ describe("HTTP MCP server", () => {
     expect((await fetch(`${baseUrl}/healthz`)).status).toBe(200);
   });
 
-  it("allows absent or same-service Origin headers and rejects cross-origin requests", async () => {
+  it("applies Origin validation only to MCP routes", async () => {
     const baseUrl = await start();
 
     expect((await fetch(`${baseUrl}/healthz`)).status).toBe(200);
     expect(
       (
         await fetch(`${baseUrl}/healthz`, {
-          headers: { origin: testConfig.baseUrl },
+          headers: { origin: "https://attacker.example" },
         })
       ).status,
     ).toBe(200);
     expect(
       (
-        await fetch(`${baseUrl}/healthz`, {
+        await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
           headers: { origin: "https://attacker.example" },
         })
       ).status,
     ).toBe(403);
     expect(
       (
-        await fetch(`${baseUrl}/healthz`, {
+        await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
           headers: { origin: "not a URL" },
         })
       ).status,
     ).toBe(403);
+    expect(
+      (
+        await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { origin: testConfig.baseUrl },
+        })
+      ).status,
+    ).toBe(401);
   });
 
   it("enforces the configured Host allowlist for non-loopback deployments", async () => {
@@ -808,5 +960,18 @@ describe("public video range streaming", () => {
       expect(response.status).toBe(416);
       expect(response.headers.get("content-range")).toBe(`bytes */${fixtureSize}`);
     }
+  });
+
+  it("adds defensive headers when the configured video file is missing", async () => {
+    const videoApp = express();
+    videoApp.get("/file", (req, res) =>
+      streamPublicVideo(req, res, "/definitely/missing/video.mp4"),
+    );
+    const baseUrl = await start(videoApp);
+    const response = await fetch(`${baseUrl}/file`);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   });
 });

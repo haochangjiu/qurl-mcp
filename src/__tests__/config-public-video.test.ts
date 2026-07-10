@@ -163,6 +163,20 @@ describe("public video config", () => {
     );
 
     expect(() => loadRuntimeConfig(configPath)).toThrow("non-reserved absolute URL path");
+
+    clearRuntimeConfigCache();
+    writeFileSync(
+      configPath,
+      JSON.stringify({ publicVideo: { pagePath: "/media/../etc", filePath: "/srv/video.mp4" } }),
+    );
+    expect(() => loadRuntimeConfig(configPath)).toThrow("non-reserved absolute URL path");
+
+    clearRuntimeConfigCache();
+    writeFileSync(
+      configPath,
+      JSON.stringify({ publicVideo: { pagePath: "/media//video", filePath: "/srv/video.mp4" } }),
+    );
+    expect(() => loadRuntimeConfig(configPath)).toThrow("non-reserved absolute URL path");
   });
 
   it("loads the qurl API key only from the environment", () => {
@@ -206,5 +220,16 @@ describe("public video config", () => {
       JSON.stringify({ defaultQurlConnectorUrl: "https://user:pass@connector.example.com" }),
     );
     expect(() => loadRuntimeConfig(configPath)).toThrow("must not contain credentials");
+    clearRuntimeConfigCache();
+
+    writeFileSync(configPath, JSON.stringify({ defaultQurlApiUrl: "https://api.example.com?q=1" }));
+    expect(() => loadRuntimeConfig(configPath)).toThrow("a query");
+    clearRuntimeConfigCache();
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({ defaultQurlApiUrl: "https://api.example.com/#fragment" }),
+    );
+    expect(() => loadRuntimeConfig(configPath)).toThrow("a query");
   });
 });

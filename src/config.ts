@@ -153,9 +153,9 @@ export function parseSizeBytes(value: unknown, fallback: number, fieldName: stri
     throw new Error(`${fieldName} must be a positive byte size.`);
   }
 
-  const bytes = Math.floor(amount * unit);
+  const bytes = amount * unit;
   if (!Number.isSafeInteger(bytes) || bytes <= 0) {
-    throw new Error(`${fieldName} must be a positive byte size.`);
+    throw new Error(`${fieldName} must resolve to a positive whole number of bytes.`);
   }
   return bytes;
 }

@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { hkdf, randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getRequestQurlApiKey } from "../auth/request-context.js";
-import { loadRuntimeConfig } from "../config.js";
+import { loadRuntimeConfig, type RuntimeConfig } from "../config.js";
 import { isEmailAddress, uniqueRecipients } from "../email-addresses.js";
 import { EmailDeliverySetupError } from "../email-types.js";
 import type { EmailDeliveryRecipientResult, EmailDeliveryResult } from "../email-types.js";
@@ -98,7 +98,7 @@ export async function sendEmailMessage(
     throw new EmailDeliverySetupError("input", "Email text exceeds the 10,000 character limit.");
   }
 
-  let runtimeConfig;
+  let runtimeConfig: RuntimeConfig;
   try {
     runtimeConfig = loadRuntimeConfig();
   } catch (error) {

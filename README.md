@@ -219,7 +219,7 @@ the configured service URL to its origin and optional path prefix.
 | `smtp.fromEmail`               | Sender email address                                                         |
 | `smtp.fromName`                | Sender display name                                                          |
 | `smtp.allowedRecipients`       | Optional exact-address allowlist                                             |
-| `smtp.allowedRecipientDomains` | Optional domain allowlist                                                    |
+| `smtp.allowedRecipientDomains` | Optional exact-domain allowlist (subdomains are not included)                |
 | `smtp.maxRecipientsPerMessage` | Per-message recipient cap (default `10`)                                     |
 | `smtp.maxRecipientsPerHour`    | Per-qURL-key attempted-recipient cap per fixed hourly window (default `100`) |
 
@@ -322,9 +322,10 @@ validation deadline are configurable for clients with longer
 introspection-to-tool-call gaps. The deadline is absolute and applies regardless
 of activity, including an open SSE stream or a long-running first tool call.
 Validated clients that disconnect without sending `DELETE /mcp` retain their
-bounded session slot until the idle TTL expires so an SSE reconnect can reuse
-the session. Size `maxSessions` and the idle TTL for clients that do not perform
-explicit session teardown.
+bounded session slot for a 30-second reconnect grace period. A reconnect clears
+that deadline; otherwise the session is reaped without waiting for the longer
+idle TTL. Size `maxSessions` and the idle TTL for clients that remain connected
+but do not perform explicit session teardown.
 The first downstream qURL operation must therefore complete before that
 deadline; an unusually slow first API call may be interrupted and the client
 must re-initialize. This fail-closed behavior prevents an invalid credential
@@ -399,13 +400,13 @@ Introspection-only sessions therefore remain unvalidated and are closed at
 `unvalidatedSessionTtlMs`; clients can re-initialize if they need a longer-lived
 session. A session is promoted only after a successful qURL API call—rejected
 or rate-limited calls do not prove the credential valid. Disconnected sessions
-remain registered until `sessionIdleTtlMs` so SSE clients can reconnect, while
-`maxSessions` and `maxSessionsPerCredential` bound that reconnect allowance
-under churn.
+remain registered for a 30-second SSE reconnect grace period, while
+`maxSessions` and `maxSessionsPerCredential` bound that allowance under churn.
 
 Requests without an `Origin` header are accepted for non-browser MCP clients.
 When `Origin` is present, it must match the origin of `baseUrl`; malformed or
-cross-origin values are rejected before any route is handled.
+cross-origin values are rejected on `/mcp`. Public health, legal, and configured
+video routes do not use browser-origin state and are not gated by this check.
 
 Configure remote MCP clients with:
 

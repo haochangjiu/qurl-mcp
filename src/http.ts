@@ -54,12 +54,15 @@ type SessionContext = {
   lastActivityAt: number;
   activeRequests: number;
   credentialValidated: boolean;
+  disconnectedAt?: number;
 };
 
 type AuthorizedSession = {
   session: SessionContext;
   bearerToken: string;
 };
+
+const DISCONNECTED_SESSION_GRACE_MS = 30_000;
 
 function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
   // Coarse outer bound: base64 inflates payloads by roughly 4/3, with extra
@@ -123,6 +126,10 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   // Do not widen this check merely because allowedHosts contains extra names.
   const allowedOrigin = new URL(baseUrl).origin;
   app.use((req, res, next) => {
+    if (req.path !== "/mcp") {
+      next();
+      return;
+    }
     const origin = req.headers.origin;
     if (origin === undefined) {
       next();
@@ -148,6 +155,15 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   let pendingInitializations = 0;
   const pendingInitializationsByCredential = new Map<string, number>();
 
+  function markSessionDisconnected(sessionId: string | undefined): void {
+    if (!sessionId) return;
+    const session = sessions.get(sessionId);
+    if (!session) return;
+    const disconnectedAt = Date.now();
+    session.lastActivityAt = disconnectedAt;
+    session.disconnectedAt = disconnectedAt;
+  }
+
   async function closeSession(sessionId: string): Promise<void> {
     const session = sessions.get(sessionId);
     if (!session) return;
@@ -162,6 +178,14 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   async function sweepExpiredSessions(now = Date.now()): Promise<number> {
     const expiredIds = [...sessions.values()]
       .filter((session) => {
+        if (
+          session.activeRequests === 0 &&
+          session.disconnectedAt !== undefined &&
+          now - session.disconnectedAt >=
+            Math.min(DISCONNECTED_SESSION_GRACE_MS, config.sessionIdleTtlMs)
+        ) {
+          return true;
+        }
         if (!session.credentialValidated) {
           // The pending-session window is an absolute validation deadline.
           // Close even an active SSE stream so it cannot hold an unvalidated
@@ -186,6 +210,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     fn: () => Promise<T>,
   ): Promise<T> {
     session.lastActivityAt = Date.now();
+    session.disconnectedAt = undefined;
     session.activeRequests += 1;
     try {
       return await fn();
@@ -247,14 +272,19 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       : undefined;
   }
 
-  function rejectJsonRpc(res: ServerResponse, statusCode: number, message: string): void {
+  function rejectJsonRpc(
+    res: ServerResponse,
+    statusCode: number,
+    message: string,
+    code = -32000,
+  ): void {
     res.statusCode = statusCode;
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
         jsonrpc: "2.0",
         error: {
-          code: -32000,
+          code,
           message,
         },
         id: null,
@@ -267,6 +297,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     res: express.Response,
     filePath: string,
   ): Promise<void> {
+    setPublicPageSecurityHeaders(res);
     let stats;
     try {
       stats = await stat(filePath);
@@ -295,7 +326,6 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Cache-Control", "public, max-age=300");
-    setPublicPageSecurityHeaders(res);
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
 
     if (!range) {
@@ -470,11 +500,9 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
             // session ID. Deleting the in-memory session record here can cause
             // a subsequent GET /mcp to be rejected as "unknown session" even
             // though the client is attempting a valid reconnect. Explicit DELETE
-            // requests still remove sessions from the registry. The idle TTL
-            // bounds how long a disconnected session remains available.
-            const currentSessionId = transport.sessionId;
-            const currentSession = currentSessionId ? sessions.get(currentSessionId) : undefined;
-            if (currentSession) currentSession.lastActivityAt = Date.now();
+            // requests still remove sessions from the registry. A short grace
+            // period bounds how long a disconnected session remains available.
+            markSessionDisconnected(transport.sessionId);
           };
 
           try {
@@ -554,6 +582,10 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       return;
     }
     const { session, bearerToken } = authorizedSession;
+    // The SDK transport can remain reusable after its SSE response closes, so
+    // track the response lifecycle directly rather than relying only on the
+    // transport-level onclose hook.
+    res.once("close", () => markSessionDisconnected(session.sessionId));
 
     try {
       await trackSessionActivity(session, () =>
@@ -611,7 +643,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       return;
     }
     if (error instanceof SyntaxError) {
-      rejectJsonRpc(res, 400, "Request body must be valid JSON.");
+      rejectJsonRpc(res, 400, "Request body must be valid JSON.", -32700);
       return;
     }
     if (typeof bodyError.status === "number" && bodyError.status >= 400 && bodyError.status < 500) {

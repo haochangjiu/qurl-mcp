@@ -1,36 +1,29 @@
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { QURLClient } from "../client.js";
 
-export const PASSTHROUGH_BEARER_CLIENT_ID = "passthrough-bearer-client";
-export const PASSTHROUGH_BEARER_USER_ID = "passthrough-bearer-user";
+const PASSTHROUGH_BEARER_CLIENT_ID = "qurl-api-key";
 
 export interface PassthroughBearerAuthConfig {
   qurlApiUrl: string;
 }
 
-export function createPassthroughBearerVerifier(config: PassthroughBearerAuthConfig): {
+export function createPassthroughBearerVerifier(): {
   verifyAccessToken(token: string): Promise<AuthInfo>;
 } {
-  const qurlApiUrl = config.qurlApiUrl.trim();
-
   return {
     async verifyAccessToken(token: string): Promise<AuthInfo> {
       const qurlApiKey = token.trim();
       if (!qurlApiKey) {
-        console.warn("[mcp-auth] rejected request: empty bearer token");
         throw new Error("Invalid or expired token.");
       }
 
       return {
-        token,
+        token: qurlApiKey,
         clientId: PASSTHROUGH_BEARER_CLIENT_ID,
         scopes: ["mcp:tools"],
+        // The downstream qURL API remains the authority for key expiry and
+        // revocation. This verifier only establishes the per-request key.
         expiresAt: 4102444800,
-        extra: {
-          qurlApiKey,
-          qurlApiUrl,
-          qurlUserId: PASSTHROUGH_BEARER_USER_ID,
-        },
       };
     },
   };
@@ -38,10 +31,10 @@ export function createPassthroughBearerVerifier(config: PassthroughBearerAuthCon
 
 export function createQurlClientFromBearerToken(
   token: string,
-  config: Pick<PassthroughBearerAuthConfig, "qurlApiUrl">,
+  config: PassthroughBearerAuthConfig,
 ): QURLClient {
   return new QURLClient({
     apiKey: token.trim(),
-    baseURL: config.qurlApiUrl.trim(),
+    baseURL: config.qurlApiUrl,
   });
 }

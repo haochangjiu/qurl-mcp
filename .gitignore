@@ -22,8 +22,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
-qurl-mcp.config.json
-qurl-mcp.http.json
 
 # Test
 coverage/

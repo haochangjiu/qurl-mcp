@@ -31,18 +31,6 @@
           "isRequired": false,
           "format": "string",
           "default": "https://api.layerv.ai"
-        },
-        {
-          "name": "QURL_CONNECTOR_URL",
-          "description": "Connector base URL used by upload_file_qurl and upload_file_data_qurl to upload PDF/image files before minting a qURL. Required only for file-upload workflows.",
-          "isRequired": false,
-          "format": "string"
-        },
-        {
-          "name": "QURL_MCP_CONFIG",
-          "description": "Optional path to a shared qURL MCP config file. Both stdio and HTTP modes can read SMTP, connector, and default API settings from this file.",
-          "isRequired": false,
-          "format": "string"
         }
       ]
     }

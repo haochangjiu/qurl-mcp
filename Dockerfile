@@ -8,7 +8,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
-COPY assets ./assets
 COPY src ./src
 RUN npm run build
 RUN npm prune --omit=dev
@@ -27,10 +26,10 @@ RUN apk add --no-cache tini
 WORKDIR /app
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
-COPY --chown=node:node --from=build /app/assets ./assets
 COPY --chown=node:node --from=build /app/package.json ./
 
 ENV NODE_ENV=production
 USER node
 
-ENTRYPOINT ["/sbin/tini", "--", "node", "dist/index.js"]
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.js"]

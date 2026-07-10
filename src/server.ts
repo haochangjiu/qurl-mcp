@@ -14,9 +14,6 @@ import { revokeQurlTokenTool } from "./tools/revoke-qurl-token.js";
 import { updateQurlTokenTool } from "./tools/update-qurl-token.js";
 import { listQurlSessionsTool } from "./tools/list-qurl-sessions.js";
 import { terminateQurlSessionsTool } from "./tools/terminate-qurl-sessions.js";
-import { uploadFileDataQurlTool } from "./tools/upload-file-data-qurl.js";
-import { uploadFileQurlTool } from "./tools/upload-file-qurl.js";
-import { uploadTextQurlTool } from "./tools/upload-text-qurl.js";
 import type { ToolAnnotations } from "./tools/_shared.js";
 import { linksResource } from "./resources/links.js";
 import { usageResource } from "./resources/usage.js";
@@ -45,9 +42,7 @@ export type ToolFactory = (client: IQURLClient) => {
   }>;
 };
 
-export type ServerMode = "stdio" | "http";
-
-const sharedToolFactories = [
+export const toolFactories = [
   createQurlTool,
   resolveQurlTool,
   listQurlsTool,
@@ -63,32 +58,13 @@ const sharedToolFactories = [
   terminateQurlSessionsTool,
 ] satisfies ToolFactory[];
 
-export const toolFactories = [
-  ...sharedToolFactories,
-  uploadFileQurlTool,
-  uploadFileDataQurlTool,
-  uploadTextQurlTool,
-];
-
-export function getToolFactoriesForMode(mode: ServerMode): ToolFactory[] {
-  if (mode === "http") {
-    return [...sharedToolFactories, uploadFileDataQurlTool, uploadTextQurlTool];
-  }
-
-  return [...sharedToolFactories, uploadFileQurlTool];
-}
-
-export function createServer(
-  client: IQURLClient,
-  version: string,
-  mode: ServerMode = "stdio",
-): McpServer {
+export function createServer(client: IQURLClient, version: string): McpServer {
   const server = new McpServer({
     name: "qurl",
     version,
   });
 
-  for (const factory of getToolFactoriesForMode(mode)) {
+  for (const factory of toolFactories) {
     const tool = factory(client);
     // registerTool wires outputSchema + annotations into tools/list; pass
     // .shape (ZodRawShape), not the ZodObject itself.

@@ -15,7 +15,6 @@ import type {
   Resource as SDKResource,
   UpdateResourceQurlInput as SDKUpdateResourceQurlInput,
 } from "@layervai/qurl";
-import type { EmailDeliveryResult } from "./email-types.js";
 
 export interface QURLClientConfig {
   apiKey: string;
@@ -91,7 +90,6 @@ export interface CreateQURLData {
   expires_at: string;
   label?: string;
   type?: string;
-  email_delivery?: EmailDeliveryResult;
 }
 
 export interface AIAgentPolicy {
@@ -238,7 +236,6 @@ export interface MintLinkOutput {
   branded_domain?: string;
   expires_at: string;
   type?: string;
-  email_delivery?: EmailDeliveryResult;
 }
 
 // Discriminated on `success` so consumers narrowing on the boolean get
@@ -361,7 +358,7 @@ export class QURLAPIError extends Error {
  * substring to assert against.
  */
 export const MISSING_API_KEY_MESSAGE =
-  "QURL_API_KEY is not set. Set it in the MCP server environment or runtime config and restart to make API calls.";
+  "QURL_API_KEY is not set. Set it in the MCP server environment and restart to make API calls.";
 
 // --- SDK adapter helpers ---
 

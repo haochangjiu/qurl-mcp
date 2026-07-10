@@ -26,8 +26,6 @@ export function batchCreateTool(client: IQURLClient) {
     title: "Batch Create qURLs",
     description:
       "Create up to 100 qURLs in a single request. The single-call alternative to looping `create_qurl` — saves round trips and returns a single envelope of per-item results. " +
-      "Only use this when the user explicitly wants multiple qURLs in one request. Never use it for a single URL, a single file, a single image, or a single attachment. " +
-      "Do not use this tool for uploaded files, image attachments, PDFs, or base64 file content — use `upload_file_data_qurl` (HTTP mode) or `upload_file_qurl` (stdio mode) instead. " +
       "**Not transactional:** items succeed or fail independently (see `succeeded`/`failed` counts and per-item `error`). " +
       "Use this when you need to mint many qURLs at once (e.g. provisioning a vendor list, distributing per-customer share links). " +
       "Use `create_qurl` for a single resource. " +

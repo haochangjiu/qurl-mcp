@@ -2,12 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { mintLinkTool, mintLinkBaseSchema, mintLinkSchema } from "../../tools/mint-link.js";
 import { makeMockClient } from "../helpers.js";
 
-vi.mock("../../services/email.js", () => ({
-  sendEmailMessage: vi.fn(),
-}));
-
-import { sendEmailMessage } from "../../services/email.js";
-
 const fixture = {
   qurl_id: "q_abc123def45",
   qurl_link: "https://qurl.link/at_newtoken123",
@@ -78,9 +72,6 @@ describe("mintLinkTool", () => {
         one_time_use: true,
         max_sessions: 1,
         session_duration: "30m",
-        email_delivery: {
-          to: ["alice@example.com"],
-        },
       });
       expect(result.success).toBe(true);
     });
@@ -189,34 +180,6 @@ describe("mintLinkTool", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("expires_in or expires_at");
       expect(mockMint).not.toHaveBeenCalled();
-    });
-
-    it("sends email to multiple recipients when email_delivery is provided", async () => {
-      const mockMint = vi.fn().mockResolvedValue({ data: fixture });
-      vi.mocked(sendEmailMessage).mockResolvedValue({
-        attempted: true,
-        enabled: true,
-        recipients: ["alice@example.com", "bob@example.com"],
-        sent: 2,
-        failed: 0,
-        results: [
-          { email: "alice@example.com", success: true, message_id: "msg-1" },
-          { email: "bob@example.com", success: true, message_id: "msg-2" },
-        ],
-      });
-      const client = makeMockClient({ mintLink: mockMint });
-      const tool = mintLinkTool(client);
-
-      const result = await tool.handler({
-        resource_id: validResourceId,
-        email_delivery: { to: ["alice@example.com", "bob@example.com"] },
-      });
-
-      expect(mockMint).toHaveBeenCalledWith(validResourceId, {});
-      expect(vi.mocked(sendEmailMessage)).toHaveBeenCalledOnce();
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.email_delivery?.sent).toBe(2);
-      expect(parsed.qurl_link).toBe("https://qurl.link/at_newtoken123");
     });
   });
 });

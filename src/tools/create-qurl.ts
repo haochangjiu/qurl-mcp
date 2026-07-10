@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
-import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import { createQurlOutputSchema } from "./output-schemas.js";
 
 export const aiAgentPolicySchema = z.object({
@@ -70,11 +69,6 @@ export const createQurlSchema = z.object({
       "Custom domain to assign to the auto-created resource (max 253 chars, must be registered/active/owned).",
     ),
   access_policy: accessPolicySchema.optional().describe("Access control policy for the qURL"),
-  email_delivery: emailDeliveryInputSchema
-    .optional()
-    .describe(
-      "Optional email notification settings for sending the generated qURL to one or more recipients.",
-    ),
 });
 
 export function createQurlTool(client: IQURLClient) {
@@ -84,11 +78,9 @@ export function createQurlTool(client: IQURLClient) {
     description:
       "Create a qURL — a policy-bound, expiring access link that gates a target URL with optional IP/geo/UA/AI-agent filters and time or session limits. " +
       "**When to use:** minting a fresh protected access link for share-once or time-limited access (e.g. send a customer a 24-hour download link, gate a doc behind an IP allowlist, distribute a one-time-use credential to a contractor). " +
-      "**Do NOT use this for chat-uploaded images, PDFs, screenshots, or file attachments.** In HTTP MCP mode, those should go through `upload_file_data_qurl`; in stdio mode, use `upload_file_qurl`. " +
       "**When NOT to use:** use `mint_link` when you already have a resource (`r_…`) and just need an additional access token under it — `create_qurl` identifies the resource by target URL and may return an existing same-type resource grouping. " +
       "Use `batch_create_qurls` to create many in one round-trip. " +
       "Use `update_qurl` to retag or extend an existing resource without minting a new one. " +
-      "If the user says 'give me the qURL of this image/file' and the content was uploaded in chat, this is the wrong tool. " +
       "**Behavior:** not idempotent — calling twice produces two distinct qURL tokens, though both may share the same `resource_id` when the target URL groups to an existing same-type resource (this tool doesn't surface the underlying API's `Idempotency-Key` header). " +
       "The returned `qurl_link` is shown ONCE in this response and is never recoverable through `get_qurl` or `list_qurls`; persist or share it immediately. " +
       "A returned resource is in `active` status with the policy and per-token limits applied. " +
@@ -107,30 +99,15 @@ export function createQurlTool(client: IQURLClient) {
       openWorldHint: true,
     },
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof createQurlSchema>) => {
-      const { email_delivery, ...createInput } = input;
-      const result = await client.createQURL(createInput);
-      const emailResult = await maybeDeliverToolEmail({
-        delivery: email_delivery,
-        defaultSubject: "Your secure qURL link is ready",
-        detailLines: [
-          "A secure qURL link has been created for you.",
-          `Target URL: ${createInput.target_url}`,
-          `Secure Link: ${result.data.qurl_link}`,
-          `Expires At: ${result.data.expires_at}`,
-          `qURL Site: ${result.data.qurl_site}`,
-          ...(result.data.label ? [`Label: ${result.data.label}`] : []),
-          ...(result.data.type ? [`Type: ${result.data.type}`] : []),
-        ],
-      });
-      const payload = emailResult ? { ...result.data, email_delivery: emailResult } : result.data;
+      const result = await client.createQURL(input);
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(payload),
+            text: JSON.stringify(result.data),
           },
         ],
-        structuredContent: toStructuredContent(payload),
+        structuredContent: toStructuredContent(result.data),
       };
     }),
   };

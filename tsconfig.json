@@ -8,7 +8,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node", "nodemailer"],
+    "types": ["node"],
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,

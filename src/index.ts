@@ -1,16 +1,26 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
-import { installTimestampedConsole } from "./logging.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { MISSING_API_KEY_MESSAGE, QURLClient } from "./client.js";
-import { getDefaultConfigPath, inspectSmtpConfig, loadRuntimeConfig } from "./config.js";
 import { createServer } from "./server.js";
-
-installTimestampedConsole();
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
+
+// Auth validation is deferred to first API call so the server can boot for
+// MCP introspection (tools/list, resources/list, prompts/list) without a key.
+// Tool/resource invocations that hit the API will throw the same typed
+// `missing_api_key` error when the client lazily constructs the SDK on the
+// first call, if the key is still missing.
+//
+// Trim so whitespace-only values (e.g. `QURL_API_KEY=" "`) take the same
+// missing-key path as truly unset; otherwise they'd silently pass the guard
+// and surface as a 401 from the server.
+const apiKey = process.env.QURL_API_KEY?.trim() ?? "";
+if (!apiKey) {
+  console.error(`Warning: ${MISSING_API_KEY_MESSAGE}`);
+}
 
 // Trim symmetric with the apiKey path so a stray space in the URL doesn't
 // produce a confusing fetch failure (DNS or scheme parse error) instead of
@@ -21,25 +31,10 @@ const { version } = require("../package.json") as { version: string };
 // where the warning fires. An empty/whitespace URL should silently fall
 // back to the default — `||` collapses both `undefined` and `""` cases
 // into one fallback expression.
-const runtimeConfigPath = getDefaultConfigPath();
-const runtimeConfig = loadRuntimeConfig(runtimeConfigPath);
-const apiKey = runtimeConfig.qurlApiKey ?? "";
-if (!apiKey) {
-  console.error(`Warning: ${MISSING_API_KEY_MESSAGE}`);
-}
-const baseURL = runtimeConfig.defaultQurlApiUrl;
-const smtpInspection = inspectSmtpConfig(runtimeConfigPath);
-console.error("Runtime config loaded.");
-if (smtpInspection.enabled) {
-  console.error("SMTP is configured.");
-} else {
-  console.error(
-    `SMTP is not configured. Missing fields: ${smtpInspection.missingFields.join(", ") || "(unknown)"}`,
-  );
-}
+const baseURL = process.env.QURL_API_URL?.trim() || "https://api.layerv.ai";
 
 const client = new QURLClient({ apiKey, baseURL });
-const server = createServer(client, version, "stdio");
+const server = createServer(client, version);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

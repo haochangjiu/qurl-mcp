@@ -117,19 +117,17 @@ function normalizeBase64Input(input: string): {
   if (paddingNeeded === 1) {
     throw new Error("file_base64 must be valid base64-encoded content");
   }
+  const dataUrlContentType = dataUrl?.[1] ? dataUrl[1].toLowerCase() : undefined;
 
   // Already properly padded
   if (paddingNeeded === 0) {
-    return {
-      base64: normalized,
-      dataUrlContentType: dataUrl?.[1] ? dataUrl[1].toLowerCase() : undefined,
-    };
+    return { base64: normalized, dataUrlContentType };
   }
 
   // Add missing padding (mod 4 = 2 needs "==", mod 4 = 3 needs "=")
   return {
     base64: normalized.padEnd(normalized.length + (4 - paddingNeeded), "="),
-    dataUrlContentType: dataUrl?.[1] ? dataUrl[1].toLowerCase() : undefined,
+    dataUrlContentType,
   };
 }
 

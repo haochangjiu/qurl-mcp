@@ -228,6 +228,7 @@ These settings are used when email delivery is requested by tools such as:
 - `create_qurl`
 - `mint_link`
 - `upload_text_qurl`
+- `upload_file_qurl`
 - `upload_file_data_qurl`
 
 If either recipient allowlist is configured, only an exact address or domain

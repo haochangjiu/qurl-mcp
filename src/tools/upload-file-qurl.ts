@@ -6,10 +6,14 @@ import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import {
   allowsServerApiKeyFallback,
-  toStructuredContent,
   withMissingApiKeyHandler,
   type ToolRuntimeOptions,
 } from "./_shared.js";
+import {
+  emailDeliveryInputSchema,
+  maybeDeliverToolEmail,
+  toEmailAugmentedResult,
+} from "./email-delivery.js";
 import { uploadMintOptionsShape } from "./upload-mint-options.js";
 import {
   getConnectorConfig,
@@ -43,6 +47,11 @@ export const uploadFileQurlSchema = z
       .optional()
       .describe(
         "Optional MIME type override. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif",
+      ),
+    email_delivery: emailDeliveryInputSchema
+      .optional()
+      .describe(
+        "Optional email notification settings for sending the uploaded file's qURL to one or more recipients.",
       ),
   })
   .extend(uploadMintOptionsShape);
@@ -151,7 +160,7 @@ export function uploadFileQurlTool(
       "The tool reads `file_path`, uploads the file to `${QURL_CONNECTOR_URL}/api/upload`, then mints a qURL from the returned `resource_id`. " +
       "If `one_time_use` is omitted, the tool defaults it to `true` for safer file distribution. " +
       "Requires both `QURL_API_KEY` and `QURL_CONNECTOR_URL` in the server environment or runtime config. " +
-      "**Returns:** `{ resource_id: string, qurl_id: string, qurl_link: string, qurl_site?: string, expires_at: string, file_name: string, content_type: string, size_bytes: number, branded_domain?: string, type?: string }`.",
+      "**Returns:** `{ resource_id: string, qurl_id: string, qurl_link: string, qurl_site?: string, expires_at: string, file_name: string, content_type: string, size_bytes: number, branded_domain?: string, type?: string, email_delivery?: object }`.",
     inputSchema: uploadFileQurlSchema,
     outputSchema: uploadFileQurlOutputSchema,
     annotations: {
@@ -164,16 +173,22 @@ export function uploadFileQurlTool(
     handler: withMissingApiKeyHandler(async (input: UploadFileQurlInput) => {
       const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
       const result = await uploadLocalFileAndMint(client, input, connectorConfig);
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(result),
-          },
+      const emailResult = await maybeDeliverToolEmail({
+        allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
+        delivery: input.email_delivery,
+        defaultSubject: "Your secure file access link is ready",
+        detailLines: [
+          "A secure qURL file link has been created for you.",
+          `File Name: ${result.file_name}`,
+          `Content Type: ${result.content_type}`,
+          `Secure Link: ${result.qurl_link}`,
+          `Expires At: ${result.expires_at}`,
+          ...(result.qurl_site ? [`qURL Site: ${result.qurl_site}`] : []),
+          ...(input.label ? [`Label: ${input.label}`] : []),
         ],
-        structuredContent: toStructuredContent(result),
-      };
+      });
+
+      return toEmailAugmentedResult(result, emailResult);
     }),
   };
 }

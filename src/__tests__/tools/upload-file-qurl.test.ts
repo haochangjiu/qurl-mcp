@@ -7,6 +7,12 @@ import { clearRuntimeConfigCache } from "../../config.js";
 import { makeMockClient } from "../helpers.js";
 import { uploadFileQurlSchema, uploadFileQurlTool } from "../../tools/upload-file-qurl.js";
 
+vi.mock("../../services/email.js", () => ({
+  sendEmailMessage: vi.fn(),
+}));
+
+import { sendEmailMessage } from "../../services/email.js";
+
 const fixturePath = resolve("src/__tests__/fixtures/sample.pdf");
 
 describe("uploadFileQurlTool", () => {
@@ -136,6 +142,45 @@ describe("uploadFileQurlTool", () => {
       expect(parsed.qurl_site).toBeUndefined();
     });
 
+    it("emails the generated local-file link when requested", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ resource_id: "r_upload12345" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      vi.mocked(sendEmailMessage).mockResolvedValue({
+        attempted: true,
+        enabled: true,
+        recipients: ["alice@example.com"],
+        sent: 1,
+        failed: 0,
+        results: [{ email: "alice@example.com", success: true, message_id: "msg-1" }],
+      });
+      const tool = uploadFileQurlTool(
+        makeMockClient({
+          mintLink: vi.fn().mockResolvedValue({
+            data: {
+              qurl_id: "q_123456789ab",
+              qurl_link: "https://qurl.link/#at_upload",
+              expires_at: "2026-06-23T00:00:00Z",
+            },
+          }),
+          getQURL: vi.fn().mockRejectedValue(new Error("insufficient_scope")),
+        }),
+      );
+
+      const result = await tool.handler({
+        file_path: fixturePath,
+        email_delivery: { to: ["alice@example.com"] },
+      });
+
+      expect(sendEmailMessage).toHaveBeenCalledOnce();
+      expect(JSON.parse(result.content[0].text).email_delivery).toEqual(
+        expect.objectContaining({ sent: 1, failed: 0 }),
+      );
+    });
+
     it("returns isError when QURL_API_KEY is missing", async () => {
       delete process.env.QURL_API_KEY;
       const configPath = join(tempDir!, "qurl-mcp.config.json");
@@ -213,6 +258,21 @@ describe("uploadFileQurlTool", () => {
         statusCode: 400,
         code: "connector_upload_failed",
         message: "upload rejected",
+      });
+    });
+
+    it("distinguishes malformed connector resource IDs from missing fields", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ resource_id: "wrong-shape" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      const tool = uploadFileQurlTool(makeMockClient());
+
+      await expect(tool.handler({ file_path: fixturePath })).rejects.toMatchObject<QURLAPIError>({
+        code: "invalid_resource_id",
+        message: "Connector upload returned a resource_id with an invalid format.",
       });
     });
   });

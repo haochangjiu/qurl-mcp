@@ -170,6 +170,8 @@ export function validateFileSignature(fileData: Uint8Array, contentType: string)
     (contentType === "image/webp" &&
       bytes.length >= 16 &&
       ascii(0, 4) === "RIFF" &&
+      // WebP requires RIFF size + 8 to equal the complete file size. Reject
+      // trailing bytes deliberately so a valid prefix cannot bless a polyglot.
       bytes.readUInt32LE(4) + 8 === bytes.length &&
       ascii(8, 12) === "WEBP" &&
       ["VP8 ", "VP8L", "VP8X"].includes(ascii(12, 16)));
@@ -232,20 +234,16 @@ function throwConnectorError(response: Response, parsed: unknown, requestId?: st
 }
 
 /**
- * Extract resource_id from connector success response.
+ * Extract the raw resource_id field from a connector success response.
  * Handles both `{ resource_id }` and `{ data: { resource_id } }` shapes.
  */
-function extractResourceId(parsed: unknown): string | undefined {
+function extractResourceId(parsed: unknown): unknown {
   if (typeof parsed !== "object" || parsed === null) {
     return undefined;
   }
 
   // Direct shape: { resource_id: string }
-  if (
-    "resource_id" in parsed &&
-    typeof parsed.resource_id === "string" &&
-    RESOURCE_ID_PATTERN.test(parsed.resource_id)
-  ) {
+  if ("resource_id" in parsed) {
     return parsed.resource_id;
   }
 
@@ -254,9 +252,7 @@ function extractResourceId(parsed: unknown): string | undefined {
     "data" in parsed &&
     typeof parsed.data === "object" &&
     parsed.data !== null &&
-    "resource_id" in parsed.data &&
-    typeof parsed.data.resource_id === "string" &&
-    RESOURCE_ID_PATTERN.test(parsed.data.resource_id)
+    "resource_id" in parsed.data
   ) {
     return parsed.data.resource_id;
   }
@@ -300,11 +296,21 @@ async function processConnectorResponse(response: Response): Promise<ConnectorUp
   }
 
   const resourceId = extractResourceId(parsed);
-  if (!resourceId) {
+  if (resourceId === undefined) {
     throw new QURLAPIError(
       0,
       "unexpected_response",
       "Connector upload succeeded but did not return a resource_id.",
+      undefined,
+      undefined,
+      requestId,
+    );
+  }
+  if (typeof resourceId !== "string" || !RESOURCE_ID_PATTERN.test(resourceId)) {
+    throw new QURLAPIError(
+      0,
+      "invalid_resource_id",
+      "Connector upload returned a resource_id with an invalid format.",
       undefined,
       undefined,
       requestId,

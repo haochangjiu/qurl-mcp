@@ -22,6 +22,18 @@ describe("logging", () => {
     expect(write).toHaveBeenCalledWith("2026-07-10 06:30:45.123 UTC ready\n");
   });
 
+  it("redacts credentials from informational logs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T06:30:45.123Z"));
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    logInfo("request Bearer secret-token used lv_live_secret");
+
+    expect(write).toHaveBeenCalledWith(
+      "2026-07-10 06:30:45.123 UTC request Bearer [REDACTED] used [REDACTED]\n",
+    );
+  });
+
   it("redacts credentials and flattens untrusted error text", () => {
     expect(sanitizeLogValue("Bearer secret-token\nlv_live_secret")).toBe(
       "Bearer [REDACTED] [REDACTED]",

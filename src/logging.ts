@@ -11,7 +11,7 @@ function formatTimestamp(date = new Date()): string {
 }
 
 export function logInfo(message: string): void {
-  process.stderr.write(`${formatTimestamp()} ${message}\n`);
+  process.stderr.write(`${formatTimestamp()} ${sanitizeLogValue(message)}\n`);
 }
 
 export function sanitizeLogValue(value: string): string {

@@ -182,6 +182,12 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     return "method" in body && typeof body.method === "string" ? body.method : undefined;
   }
 
+  function containsInitializeRequest(body: unknown): boolean {
+    return Array.isArray(body)
+      ? body.some((message) => isInitializeRequest(message))
+      : isInitializeRequest(body);
+  }
+
   function getToolNameFromBody(body: unknown): string | undefined {
     if (!body || typeof body !== "object") return undefined;
     if (!("params" in body) || typeof body.params !== "object" || body.params === null)
@@ -343,7 +349,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     }
 
     try {
-      if (isInitializeRequest(req.body)) {
+      if (containsInitializeRequest(req.body)) {
         await sweepExpiredSessions();
         if (sessions.size + pendingInitializations >= config.maxSessions) {
           rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
@@ -549,7 +555,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     });
   }
 
-  for (const document of getLegalDocuments()) {
+  const legalDocuments = getLegalDocuments();
+  for (const document of legalDocuments) {
     const html = renderLegalDocumentHtml(document.path, baseUrl);
     if (!html) continue;
     app.get(document.path, (_req, res) => {
@@ -609,7 +616,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
         );
       }
       logInfo("HTTP and runtime config loaded.");
-      logInfo(`Public legal pages enabled: ${getLegalDocuments().length}`);
+      logInfo(`Public legal pages enabled: ${legalDocuments.length}`);
       if (config.publicVideo) logInfo("Public video page enabled.");
       if (defaultQurlConnectorUrl) logInfo("qURL Connector uploads enabled.");
       const smtpInspection = inspectSmtpConfig(runtimeConfigPath);

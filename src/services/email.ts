@@ -6,6 +6,10 @@ import { loadRuntimeConfig } from "../config.js";
 import { isEmailAddress, uniqueRecipients } from "../email-addresses.js";
 import type { EmailDeliveryRecipientResult, EmailDeliveryResult } from "../email-types.js";
 
+// Nodemailer v9 does not publish bundled declarations. @types/nodemailer v8
+// is the current DefinitelyTyped line for TypeScript 6 and covers the
+// createTransport/sendMail surface used here.
+
 export interface EmailMessageInput {
   to: string[];
   subject: string;

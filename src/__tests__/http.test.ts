@@ -140,6 +140,35 @@ describe("HTTP MCP server", () => {
     );
   });
 
+  it("initializes from a single-message JSON-RPC batch", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: bearerHeaders("lv_live_batch_init"),
+      body: JSON.stringify([initializeBody]),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("mcp-session-id")).toBeTruthy();
+    expect(getActiveSessionCount()).toBe(1);
+  });
+
+  it("rejects a mixed initialization batch without retaining a session", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: bearerHeaders("lv_live_mixed_batch_init"),
+      body: JSON.stringify([
+        initializeBody,
+        { jsonrpc: "2.0", method: "notifications/initialized", params: {} },
+      ]),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("mcp-session-id")).toBeNull();
+    expect(getActiveSessionCount()).toBe(0);
+  });
+
   it("rate-limits MCP requests before authentication", async () => {
     const limitedRuntime = createHttpRuntime(
       { ...testConfig, mcpRateLimitPerMinute: 1 },

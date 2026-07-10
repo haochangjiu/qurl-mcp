@@ -19,12 +19,12 @@ export function runWithRequestAuthContext<T>(
 
 export function getRequestQurlApiKey(): string | undefined {
   const apiKey = requestAuthStorage.getStore()?.qurlApiKey?.trim();
-  return apiKey ? apiKey : undefined;
+  return apiKey || undefined;
 }
 
 export function getRequestQurlConnectorUrl(): string | undefined {
   const connectorUrl = requestAuthStorage.getStore()?.qurlConnectorUrl?.trim();
-  return connectorUrl ? connectorUrl : undefined;
+  return connectorUrl || undefined;
 }
 
 export function getRequestMaxUploadFileDataBytes(): number | undefined {

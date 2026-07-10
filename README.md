@@ -63,6 +63,10 @@ whose filesystem access is limited to intended shareable content. HTTP mode
 never registers this host-file tool.
 The byte/text tools are also available in stdio so local clients can share
 in-chat attachments without first materializing them at a known host path.
+There is intentionally no application-level path allowlist: symlinks and
+time-of-check/time-of-use races make a lexical prefix check a misleading
+security boundary. Use a dedicated OS account, container, or read-only mount
+whose readable files are already limited to the intended sharing directory.
 
 ### MCP Resources
 
@@ -279,6 +283,10 @@ re-initialize before its next request. Both pending-session limits are
 configurable for clients with longer introspection-to-tool-call gaps. The
 deadline is absolute and applies regardless of activity, including an open SSE
 stream.
+Validated clients that disconnect without sending `DELETE /mcp` retain their
+bounded session slot until the idle TTL expires so an SSE reconnect can reuse
+the session. Size `maxSessions` and the idle TTL for clients that do not perform
+explicit session teardown.
 The first downstream qURL operation must therefore complete before that
 deadline; an unusually slow first API call may be interrupted and the client
 must re-initialize. This fail-closed behavior prevents an invalid credential

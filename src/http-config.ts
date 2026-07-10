@@ -107,6 +107,9 @@ function trimString(value: string | undefined): string | undefined {
 function resolvePublicVideoFromHttpConfig(
   fileConfig: ReturnType<typeof parseConfigFile>,
 ): PublicVideoConfig | undefined {
+  // Environment overrides are resolved through runtimeConfig.publicVideo,
+  // which is preferred below. This fallback intentionally reads only the
+  // HTTP file for deployments that keep media settings there.
   const filePath = trimString(fileConfig.publicVideo?.filePath);
   if (!filePath) return undefined;
 

@@ -328,6 +328,28 @@ describe("QURLClient adapter", () => {
       expect(err.requestId).toBe("req_9");
     });
 
+    it("does not validate the request credential on a downstream 401", async () => {
+      sdk.get.mockRejectedValue(
+        new AuthorizationError({
+          status: 401,
+          code: "invalid_api_key",
+          title: "Unauthorized",
+          detail: "invalid credential",
+        }),
+      );
+      let credentialValidated = false;
+
+      await runWithRequestAuthContext(
+        { markCredentialValidated: () => (credentialValidated = true) },
+        () =>
+          newClient()
+            .getQURL("r_x")
+            .catch(() => undefined),
+      );
+
+      expect(credentialValidated).toBe(false);
+    });
+
     it("translates a transport-level SDK error (NetworkError) to QURLAPIError", async () => {
       // All SDK error subclasses — including transport/timeout failures —
       // extend QURLError, so translateError catches them too (status 0). This

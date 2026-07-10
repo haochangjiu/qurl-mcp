@@ -1,10 +1,5 @@
 import { basename } from "node:path";
-
-export interface PublicVideoPageConfig {
-  title: string;
-  pagePath: string;
-  filePath: string;
-}
+import type { PublicVideoConfig } from "../config.js";
 
 const referenceSiteUrl = "https://layerv.ai";
 
@@ -21,7 +16,7 @@ export function getPublicVideoFileRoute(pagePath: string): string {
   return `${pagePath.replace(/\/+$/, "") || "/media/video"}/file`;
 }
 
-export function renderPublicVideoPageHtml(config: PublicVideoPageConfig, baseUrl: string): string {
+export function renderPublicVideoPageHtml(config: PublicVideoConfig, baseUrl: string): string {
   const canonicalUrl = new URL(config.pagePath, baseUrl).toString();
   const videoUrl = new URL(getPublicVideoFileRoute(config.pagePath), baseUrl).toString();
   const fileName = basename(config.filePath);

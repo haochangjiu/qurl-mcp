@@ -52,7 +52,9 @@ const defaultQurlApiUrl = config.defaultQurlApiUrl;
 const defaultQurlConnectorUrl = config.defaultQurlConnectorUrl;
 
 function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
-  // Base64 inflates payload size by roughly 4/3; keep extra headroom for JSON envelope fields.
+  // Coarse outer bound: base64 inflates payloads by roughly 4/3, with extra
+  // headroom for the JSON-RPC envelope. decodeBase64File applies the exact
+  // decoded-byte limit after parsing.
   return Math.ceil(maxUploadFileDataBytes * 1.5) + 64 * 1024;
 }
 
@@ -569,6 +571,7 @@ app.use(jsonBodyErrorHandler);
 export function startHttpServer(): Server {
   installTimestampedConsole();
   let sweepInProgress = false;
+  const shortestSessionTtlMs = Math.min(config.sessionIdleTtlMs, config.unvalidatedSessionTtlMs);
   const sweepTimer = setInterval(
     () => {
       if (sweepInProgress) return;
@@ -581,7 +584,7 @@ export function startHttpServer(): Server {
           sweepInProgress = false;
         });
     },
-    Math.min(60_000, Math.max(10_000, Math.floor(config.sessionIdleTtlMs / 2))),
+    Math.min(60_000, Math.max(5_000, Math.floor(shortestSessionTtlMs / 2))),
   );
   sweepTimer.unref();
 

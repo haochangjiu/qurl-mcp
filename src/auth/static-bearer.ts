@@ -3,6 +3,10 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { QURLClient } from "../client.js";
 
 export const PASSTHROUGH_BEARER_CLIENT_ID = "passthrough-bearer-client";
+// The MCP SDK requires an expiry for bearer middleware. Actual qURL key
+// expiry/revocation is enforced by the downstream API, so use a distant
+// sentinel rather than pretending to know the key's real expiry.
+const DOWNSTREAM_VALIDATED_TOKEN_EXPIRY = 4_102_444_800;
 
 export interface PassthroughBearerAuthConfig {
   qurlApiUrl: string;
@@ -23,7 +27,7 @@ export function createPassthroughBearerVerifier(): {
         token: qurlApiKey,
         clientId: PASSTHROUGH_BEARER_CLIENT_ID,
         scopes: ["mcp:tools"],
-        expiresAt: 4102444800,
+        expiresAt: DOWNSTREAM_VALIDATED_TOKEN_EXPIRY,
       };
     },
   };

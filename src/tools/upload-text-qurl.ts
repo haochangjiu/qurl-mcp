@@ -112,11 +112,10 @@ export function uploadTextQurlTool(client: IQURLClient) {
           return uploadResult;
         }
 
-        const result = uploadResult.structuredContent
-          ? {
-              ...uploadResult.structuredContent,
-            }
-          : (JSON.parse(uploadResult.content[0].text) as Record<string, unknown>);
+        if (!uploadResult.structuredContent) {
+          throw new Error("File upload completed without structured result data.");
+        }
+        const result = { ...uploadResult.structuredContent };
 
         const emailResult = await maybeDeliverToolEmail({
           delivery: input.email_delivery,

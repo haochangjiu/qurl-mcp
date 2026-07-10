@@ -54,6 +54,11 @@ It currently supports:
 | `upload_file_data_qurl` | `http` | Upload base64 file content and mint a qURL |
 | `upload_text_qurl` | `http` | Upload text content and mint a qURL |
 
+`upload_file_qurl` is intentionally stdio-only. It can read any supported
+PDF/image that the local MCP process user can access, so agents should invoke
+it only for a path the user explicitly selected for sharing. HTTP mode never
+registers this host-file tool.
+
 ### MCP Resources
 
 | URI | Description |

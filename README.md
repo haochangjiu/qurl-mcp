@@ -150,6 +150,13 @@ Their responsibilities are:
 | `defaultQurlApiUrl`       | Base URL of the qURL backend API                       |
 | `defaultQurlConnectorUrl` | Base URL of the upload connector                       |
 
+Raising `maxUploadFileDataBytes` also raises the HTTP JSON parser's per-request
+memory ceiling to roughly 1.5 times that value (up to about 150 MB at the
+100 MB maximum), before base64 decoding applies the exact byte cap. Size this
+setting and the reverse-proxy concurrency limit together; bearer middleware
+rejects missing headers before parsing but downstream API validation happens
+after the request body is accepted.
+
 Set `QURL_API_KEY` in the environment for `stdio` mode. In HTTP mode, every
 client request supplies its own qURL API key as a bearer token.
 
@@ -239,17 +246,20 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 Because `/mcp` rate limits are keyed by client IP, reverse-proxy deployments
 must set the correct hop count or all callers behind the proxy will share the
 proxy's single rate-limit bucket.
-Bearer credentials are conclusively validated by the first downstream qURL API
-call. Until then, sessions use the smaller pending-session cap and one-minute
+Bearer credentials are conclusively validated by the first successful
+downstream qURL API call. Until then, sessions use the smaller pending-session cap and one-minute
 validation deadline, so arbitrary non-empty bearer strings cannot occupy the full
 session pool for the normal 15-minute TTL. A client that performs only MCP
 introspection remains pending by design; after deadline eviction it must
 re-initialize before its next request. Both pending-session limits are
-configurable for clients with longer introspection-to-tool-call gaps.
+configurable for clients with longer introspection-to-tool-call gaps. The
+deadline is absolute and applies regardless of activity, including an open SSE
+stream.
 Accepting a non-empty bearer during MCP initialization is intentional: it keeps
 protocol introspection available before the first qURL operation, while the
 pending-session cap, absolute deadline, and request rate limit bound invalid-key
-slot usage. Only a successful downstream qURL API response promotes the session.
+slot usage. The MCP middleware does not validate the key itself; only a
+successful downstream qURL API response promotes the session.
 
 ## Configuration Priority
 
@@ -282,6 +292,10 @@ After starting in `http` mode, the common routes are:
 | `/legal/terms`                 | Public terms of service page |
 | `publicVideo.pagePath`         | Public video playback page   |
 | `publicVideo.pagePath + /file` | MP4 streaming endpoint       |
+
+`/healthz` is intentionally unauthenticated and not application-rate-limited;
+it exposes only `{ "ok": true }`. Restrict or rate-limit it at the reverse proxy
+if public health probing is not desired.
 
 ## HTTP Authentication
 

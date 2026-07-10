@@ -45,6 +45,11 @@ type SessionContext = {
   credentialValidated: boolean;
 };
 
+// Keep this aligned with the qURL API-key format. Bearer-form credentials are
+// redacted independently, but a bare key in an upstream error depends on this
+// prefix-aware pattern.
+const QURL_API_KEY_PATTERN = /\blv_[A-Za-z0-9_-]+\b/g;
+
 function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
   // Coarse outer bound: base64 inflates payloads by roughly 4/3, with extra
   // headroom for the JSON-RPC envelope. decodeBase64File applies the exact
@@ -157,7 +162,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   function sanitizeLogValue(value: string): string {
     return value
       .replace(/Bearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
-      .replace(/\blv_[A-Za-z0-9_-]+\b/g, "[REDACTED]")
+      .replace(QURL_API_KEY_PATTERN, "[REDACTED]")
       .replace(/[\r\n\u2028\u2029]/g, " ")
       .slice(0, 512);
   }

@@ -426,5 +426,7 @@ export async function uploadToConnector(
     body: form, // lgtm[js/file-access-to-http]
   });
 
+  // fetchConnector's signal remains attached while this reads the response
+  // body, so a connector that stalls after sending headers is still bounded.
   return processConnectorResponse(response);
 }

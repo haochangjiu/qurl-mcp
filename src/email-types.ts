@@ -16,7 +16,7 @@ export class EmailDeliverySetupError extends Error {
 export const emailDeliveryRecipientResultSchema = z.object({
   email: z.string(),
   success: z.boolean(),
-  skipped: z.boolean().optional(),
+  skipped: z.boolean().default(false),
   error: z.string().optional(),
   message_id: z.string().optional(),
 });

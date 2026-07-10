@@ -268,11 +268,13 @@ describe("sendEmailMessage", () => {
         {
           email: "alice@example.com",
           success: true,
+          skipped: false,
           message_id: "msg-1",
         },
         {
           email: "bob@example.com",
           success: true,
+          skipped: false,
           message_id: "msg-2",
         },
       ],
@@ -297,6 +299,10 @@ describe("sendEmailMessage", () => {
     );
     process.env.QURL_MCP_CONFIG = configPath;
     nodemailerMocks.sendMail.mockResolvedValue({ messageId: "msg-tls" });
+    nodemailerMocks.close.mockImplementationOnce(() => {
+      throw new Error("cleanup unavailable");
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const result = await sendEmailMessage({
       to: ["alice@example.com"],
@@ -305,6 +311,7 @@ describe("sendEmailMessage", () => {
     });
 
     expect(result.sent).toBe(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("SMTP transport cleanup failed"));
     expect(nodemailerMocks.createTransport).toHaveBeenCalledWith(
       expect.objectContaining({ port: 465, secure: true }),
     );

@@ -265,6 +265,7 @@ export async function sendEmailMessage(
         results.push({
           email: recipient,
           success: true,
+          skipped: false,
           message_id: sent.messageId,
         });
       } catch (error) {
@@ -272,12 +273,18 @@ export async function sendEmailMessage(
         results.push({
           email: recipient,
           success: false,
+          skipped: false,
           error: "Email delivery failed.",
         });
       }
     }
   } finally {
-    transporter.close();
+    try {
+      transporter.close();
+    } catch (error) {
+      // Transport cleanup must never replace the delivery outcome.
+      console.error(`SMTP transport cleanup failed (${formatErrorForLog(error)})`);
+    }
   }
 
   const sentCount = results.filter((result) => result.success).length;

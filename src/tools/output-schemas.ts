@@ -42,8 +42,6 @@ const accessPolicy = z
   })
   .describe("Access control policy snapshot for this token");
 
-export const emailDeliveryOutputSchema = emailDeliveryResultSchema;
-
 export const accessTokenOutputSchema = z
   .object({
     qurl_id: z.string(),
@@ -133,7 +131,7 @@ export const createQurlOutputSchema = z.object({
   expires_at: z.string(),
   label: z.string().optional(),
   type: z.string().optional().describe("Resource type echoed from the create request"),
-  email_delivery: emailDeliveryOutputSchema.optional(),
+  email_delivery: emailDeliveryResultSchema.optional(),
 });
 
 export const getQurlOutputSchema = qurlSchema;
@@ -186,7 +184,7 @@ export const mintLinkOutputSchema = z.object({
     .describe("Bare branded hostname for anchor text when the resource has a usable custom domain"),
   expires_at: z.string(),
   type: z.string().optional().describe("Resource type echoed from the underlying resource"),
-  email_delivery: emailDeliveryOutputSchema.optional(),
+  email_delivery: emailDeliveryResultSchema.optional(),
 });
 
 export const uploadFileQurlOutputSchema = z.object({
@@ -210,7 +208,7 @@ export const uploadFileQurlOutputSchema = z.object({
     .optional()
     .describe("Bare branded hostname for anchor text when the resource has a usable custom domain"),
   type: z.string().optional().describe("Resource type echoed from the minted token"),
-  email_delivery: emailDeliveryOutputSchema.optional(),
+  email_delivery: emailDeliveryResultSchema.optional(),
 });
 
 export const updateQurlTokenOutputSchema = accessTokenOutputSchema;

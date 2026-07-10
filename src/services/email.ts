@@ -155,16 +155,16 @@ export async function sendEmailMessage(
   const exactAllowlist = new Set(smtp.allowedRecipients ?? []);
   const domainAllowlist = new Set(smtp.allowedRecipientDomains ?? []);
   const hasRecipientRestrictions = exactAllowlist.size > 0 || domainAllowlist.size > 0;
-  const allowedRecipients = recipients.filter((recipient) => {
-    if (!hasRecipientRestrictions) return true;
+  const allowedRecipients: string[] = [];
+  const blockedRecipients: string[] = [];
+  for (const recipient of recipients) {
     // Recipient normalization and config parsing lowercase both sides before
     // this exact-address/domain comparison.
     const domain = recipient.slice(recipient.lastIndexOf("@") + 1);
-    return exactAllowlist.has(recipient) || domainAllowlist.has(domain);
-  });
-  const blockedRecipients = recipients.filter(
-    (recipient) => !allowedRecipients.includes(recipient),
-  );
+    const isAllowed =
+      !hasRecipientRestrictions || exactAllowlist.has(recipient) || domainAllowlist.has(domain);
+    (isAllowed ? allowedRecipients : blockedRecipients).push(recipient);
+  }
 
   if (allowedRecipients.length === 0) {
     return {

@@ -70,10 +70,12 @@ export function getConnectorConfig(allowServerApiKeyFallback = true): ConnectorC
     );
   }
 
-  return {
-    apiKey,
-    connectorURL: connectorURL.replace(/\/$/, ""),
-  };
+  const normalizedConnectorURL = connectorURL.replace(/\/$/, "");
+  // Validate operator configuration during preflight, before callers decode
+  // or read a potentially large upload payload.
+  getConnectorUploadUrl(normalizedConnectorURL);
+
+  return { apiKey, connectorURL: normalizedConnectorURL };
 }
 
 export function getConnectorUploadUrl(connectorURL: string): string {
@@ -104,6 +106,8 @@ export function getConnectorUploadUrl(connectorURL: string): string {
   }
   if (
     connectorBaseUrl.protocol !== "https:" &&
+    // The connector URL is operator-configured, never caller-controlled.
+    // Literal loopback HTTP is supported only for local development.
     !(connectorBaseUrl.protocol === "http:" && isLoopbackHostname(connectorBaseUrl.hostname))
   ) {
     throw new QURLAPIError(

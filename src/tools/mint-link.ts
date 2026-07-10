@@ -7,6 +7,7 @@ import {
   toEmailAugmentedResult,
 } from "./email-delivery.js";
 import {
+  allowsServerApiKeyFallback,
   resourceIdSchema,
   withMissingApiKeyHandler,
   zodErrorToToolResult,
@@ -90,7 +91,7 @@ export function mintLinkTool(client: IQURLClient, runtime: ToolRuntimeOptions = 
       const { resource_id, email_delivery, ...body } = parsed.data;
       const result = await client.mintLink(resource_id, body);
       const emailResult = await maybeDeliverToolEmail({
-        allowServerApiKeyFallback: runtime.mode === "stdio",
+        allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
         delivery: email_delivery,
         defaultSubject: "Your qURL access link is ready",
         detailLines: [

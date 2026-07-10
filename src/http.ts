@@ -90,7 +90,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     legacyHeaders: false,
     handler: (_req, res) => rejectJsonRpc(res, 429, "Too many requests."),
   });
-  const publicFileRateLimiter = rateLimit({
+  const publicRouteRateLimiter = rateLimit({
     windowMs: 60_000,
     limit: config.publicFileRateLimitPerMinute,
     standardHeaders: "draft-8",
@@ -260,7 +260,11 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
 
     const parsedStart = match[1] ? Number(match[1]) : undefined;
     const parsedEnd = match[2] ? Number(match[2]) : undefined;
-    if (parsedStart === undefined && parsedEnd === undefined) {
+    if (
+      (parsedStart === undefined && parsedEnd === undefined) ||
+      (parsedStart !== undefined && !Number.isSafeInteger(parsedStart)) ||
+      (parsedEnd !== undefined && !Number.isSafeInteger(parsedEnd))
+    ) {
       res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
       return;
     }
@@ -271,17 +275,13 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     if (parsedStart === undefined && parsedEnd !== undefined) {
       start = Math.max(fileSize - parsedEnd, 0);
       end = fileSize - 1;
+    } else {
+      // RFC 9110 treats an explicit last-byte position beyond the selected
+      // representation as the representation's final byte.
+      end = Math.min(end, fileSize - 1);
     }
 
-    if (
-      !Number.isInteger(start) ||
-      !Number.isInteger(end) ||
-      start < 0 ||
-      end < 0 ||
-      start >= fileSize ||
-      end >= fileSize ||
-      start > end
-    ) {
+    if (start < 0 || end < 0 || start >= fileSize || start > end) {
       res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
       return;
     }
@@ -528,7 +528,10 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       next(error);
       return;
     }
-    const bodyError = error as { status?: number; type?: string };
+    const bodyError =
+      typeof error === "object" && error !== null
+        ? (error as { status?: number; type?: string })
+        : {};
     if (bodyError.status === 413 || bodyError.type === "entity.too.large") {
       rejectJsonRpc(res, 413, "Request body is too large.");
       return;
@@ -559,7 +562,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   for (const document of legalDocuments) {
     const html = renderLegalDocumentHtml(document.path, baseUrl);
     if (!html) continue;
-    app.get(document.path, (_req, res) => {
+    app.get(document.path, publicRouteRateLimiter, (_req, res) => {
       setPublicPageSecurityHeaders(res);
       res.type("html").send(html);
     });
@@ -571,17 +574,17 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const videoFileRoute = getPublicVideoFileRoute(videoPagePath);
     const videoPageHtml = renderPublicVideoPageHtml(publicVideo, baseUrl);
 
-    app.get(videoPagePath, (_req, res) => {
+    app.get(videoPagePath, publicRouteRateLimiter, (_req, res) => {
       setPublicPageSecurityHeaders(res);
       res.type("html").send(videoPageHtml);
     });
 
-    app.get(videoFileRoute, publicFileRateLimiter, (req, res) => {
+    app.get(videoFileRoute, publicRouteRateLimiter, (req, res) => {
       streamPublicVideo(req, res, publicVideo.filePath);
     });
   }
 
-  app.get("/healthz", (_req, res) => {
+  app.get("/healthz", publicRouteRateLimiter, (_req, res) => {
     res.json({ ok: true });
   });
 

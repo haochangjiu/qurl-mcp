@@ -72,6 +72,21 @@ describe("uploadFileDataQurlTool", () => {
   });
 
   describe("handler", () => {
+    it("validates connector configuration before decoding file data", async () => {
+      process.env.QURL_CONNECTOR_URL = "http://connector.test";
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileDataQurlTool(makeMockClient());
+
+      await expect(
+        tool.handler({
+          file_base64: "not base64!",
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toThrow("must use HTTPS");
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
     it("uploads base64 file data, mints a qURL, and returns a structured result", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ resource_id: "r_upload12345" }), {

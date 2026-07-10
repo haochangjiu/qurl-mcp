@@ -10,6 +10,10 @@ export type ToolRuntimeOptions = {
   mode: "stdio" | "http";
 };
 
+export function allowsServerApiKeyFallback(runtime: ToolRuntimeOptions): boolean {
+  return runtime.mode === "stdio";
+}
+
 /**
  * Tool result shape that handlers return. Kept structural so we don't
  * take a hard dep on the MCP SDK's internal types. `structuredContent`

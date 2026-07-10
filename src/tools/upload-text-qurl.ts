@@ -3,7 +3,11 @@ import type { IQURLClient } from "../client.js";
 import { formatErrorForLog } from "../logging.js";
 import { createTextPdfTempFile } from "../services/text-pdf.js";
 import { accessPolicySchema } from "./create-qurl.js";
-import { withMissingApiKeyHandler, type ToolRuntimeOptions } from "./_shared.js";
+import {
+  allowsServerApiKeyFallback,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
 import {
   emailDeliveryInputSchema,
   maybeDeliverToolEmail,
@@ -93,7 +97,7 @@ export function uploadTextQurlTool(
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadTextQurlSchema>) => {
       const requestedFileName = input.file_name ?? "content.pdf";
 
-      const connectorConfig = getConnectorConfig(runtime.mode === "stdio");
+      const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
 
       const pdfFile = await createTextPdfTempFile({
         content: input.content,
@@ -119,7 +123,7 @@ export function uploadTextQurlTool(
         );
 
         const emailResult = await maybeDeliverToolEmail({
-          allowServerApiKeyFallback: runtime.mode === "stdio",
+          allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
           delivery: input.email_delivery,
           defaultSubject: "Your secure text access link is ready",
           detailLines: [

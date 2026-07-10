@@ -3,7 +3,11 @@ import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
 import { accessPolicySchema } from "./create-qurl.js";
-import { withMissingApiKeyHandler, type ToolRuntimeOptions } from "./_shared.js";
+import {
+  allowsServerApiKeyFallback,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
 import {
   emailDeliveryInputSchema,
   maybeDeliverToolEmail,
@@ -189,7 +193,7 @@ export function uploadFileDataQurlTool(
     },
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadFileDataQurlSchema>) => {
       // Preflight connector config before decoding payloads so auth/config errors fail fast.
-      const connectorConfig = getConnectorConfig(runtime.mode === "stdio");
+      const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
 
       const fileName = normalizeFileName(input.file_name);
       validateFileNameContentType(fileName, input.content_type);
@@ -218,7 +222,7 @@ export function uploadFileDataQurlTool(
       );
 
       const emailResult = await maybeDeliverToolEmail({
-        allowServerApiKeyFallback: runtime.mode === "stdio",
+        allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
         delivery: input.email_delivery,
         defaultSubject: "Your secure file access link is ready",
         detailLines: [

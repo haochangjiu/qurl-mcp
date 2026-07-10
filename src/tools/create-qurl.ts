@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
-import { withMissingApiKeyHandler, type ToolRuntimeOptions } from "./_shared.js";
+import {
+  allowsServerApiKeyFallback,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
 import {
   emailDeliveryInputSchema,
   maybeDeliverToolEmail,
@@ -117,7 +121,7 @@ export function createQurlTool(
       const { email_delivery, ...createInput } = input;
       const result = await client.createQURL(createInput);
       const emailResult = await maybeDeliverToolEmail({
-        allowServerApiKeyFallback: runtime.mode === "stdio",
+        allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
         delivery: email_delivery,
         defaultSubject: "Your secure qURL link is ready",
         detailLines: [

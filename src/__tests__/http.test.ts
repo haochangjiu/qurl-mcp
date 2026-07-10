@@ -225,28 +225,30 @@ describe("HTTP MCP server", () => {
     expect(differentTrustedPosition.status).toBe(401);
   });
 
-  it("rate-limits the runtime-wired public video file route", async () => {
+  it("rate-limits every runtime-wired public route", async () => {
     const fixturePath = fileURLToPath(new URL("./fixtures/sample.pdf", import.meta.url));
-    const videoRuntime = createHttpRuntime(
-      {
-        ...testConfig,
-        publicFileRateLimitPerMinute: 1,
-        publicVideo: {
-          title: "Rate Limit Test",
-          pagePath: "/media/video",
-          filePath: fixturePath,
+    for (const route of ["/legal/privacy", "/media/video", "/media/video/file", "/healthz"]) {
+      const publicRuntime = createHttpRuntime(
+        {
+          ...testConfig,
+          publicFileRateLimitPerMinute: 1,
+          publicVideo: {
+            title: "Rate Limit Test",
+            pagePath: "/media/video",
+            filePath: fixturePath,
+          },
         },
-      },
-      { version: "0.0.0-test" },
-    );
-    const baseUrl = await start(videoRuntime.app);
+        { version: "0.0.0-test" },
+      );
+      const baseUrl = await start(publicRuntime.app);
 
-    const first = await fetch(`${baseUrl}/media/video/file`);
-    await first.arrayBuffer();
-    const second = await fetch(`${baseUrl}/media/video/file`);
+      const first = await fetch(`${baseUrl}${route}`);
+      await first.arrayBuffer();
+      const second = await fetch(`${baseUrl}${route}`);
 
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(429);
+      expect(first.status, route).toBe(200);
+      expect(second.status, route).toBe(429);
+    }
   });
 
   it("binds sessions to the bearer token that initialized them", async () => {
@@ -567,6 +569,13 @@ describe("public video range streaming", () => {
       `bytes ${fixtureSize - 5}-${fixtureSize - 1}/${fixtureSize}`,
     );
     expect((await suffix.arrayBuffer()).byteLength).toBe(5);
+
+    const overlong = await fetch(`${baseUrl}/file`, {
+      headers: { range: `bytes=0-${fixtureSize + 100}` },
+    });
+    expect(overlong.status).toBe(206);
+    expect(overlong.headers.get("content-range")).toBe(`bytes 0-${fixtureSize - 1}/${fixtureSize}`);
+    expect((await overlong.arrayBuffer()).byteLength).toBe(fixtureSize);
   });
 
   it("rejects malformed and unsatisfiable ranges", async () => {

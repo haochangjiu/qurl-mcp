@@ -248,24 +248,24 @@ When configured, the HTTP server additionally exposes:
 | `sessionIdleTtlMs`             | Idle session eviction window (default 15 minutes)                                   |
 | `unvalidatedSessionTtlMs`      | Absolute validation deadline for never-validated bearer sessions (default 1 minute) |
 | `mcpRateLimitPerMinute`        | Per-client `/mcp` request limit (default `120`)                                     |
-| `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`)                               |
+| `publicFileRateLimitPerMinute` | Per-client public-route request limit (default `300`)                               |
 
 HTTP fields have matching environment overrides:
 
-| Environment variable                         | Config field                       |
-| -------------------------------------------- | ---------------------------------- |
-| `MCP_PORT`                                   | `port`                             |
-| `MCP_HOST`                                   | `host`                             |
-| `MCP_BASE_URL`                               | `baseUrl`                          |
-| `MCP_ALLOWED_HOSTS`                          | `allowedHosts`                     |
-| `MCP_TRUST_PROXY_HOPS`                       | `trustProxyHops`                   |
-| `MCP_MAX_SESSIONS`                           | `maxSessions`                      |
-| `MCP_MAX_UNVALIDATED_SESSIONS`               | `maxUnvalidatedSessions`           |
-| `MCP_SESSION_IDLE_TTL_MS`                    | `sessionIdleTtlMs`                 |
-| `MCP_UNVALIDATED_SESSION_TTL_MS`             | `unvalidatedSessionTtlMs`          |
-| `MCP_RATE_LIMIT_PER_MINUTE`                  | `mcpRateLimitPerMinute`            |
-| `MCP_PUBLIC_FILE_RATE_LIMIT_PER_MINUTE`      | `publicFileRateLimitPerMinute`     |
-| `MCP_MAX_UPLOAD_FILE_DATA_BYTES`             | `maxUploadFileDataBytes` (shared)  |
+| Environment variable                    | Config field                      |
+| --------------------------------------- | --------------------------------- |
+| `MCP_PORT`                              | `port`                            |
+| `MCP_HOST`                              | `host`                            |
+| `MCP_BASE_URL`                          | `baseUrl`                         |
+| `MCP_ALLOWED_HOSTS`                     | `allowedHosts`                    |
+| `MCP_TRUST_PROXY_HOPS`                  | `trustProxyHops`                  |
+| `MCP_MAX_SESSIONS`                      | `maxSessions`                     |
+| `MCP_MAX_UNVALIDATED_SESSIONS`          | `maxUnvalidatedSessions`          |
+| `MCP_SESSION_IDLE_TTL_MS`               | `sessionIdleTtlMs`                |
+| `MCP_UNVALIDATED_SESSION_TTL_MS`        | `unvalidatedSessionTtlMs`         |
+| `MCP_RATE_LIMIT_PER_MINUTE`             | `mcpRateLimitPerMinute`           |
+| `MCP_PUBLIC_FILE_RATE_LIMIT_PER_MINUTE` | `publicFileRateLimitPerMinute`    |
+| `MCP_MAX_UPLOAD_FILE_DATA_BYTES`        | `maxUploadFileDataBytes` (shared) |
 
 The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 `allowedHosts` is explicitly configured. Set `trustProxyHops` (or
@@ -342,9 +342,8 @@ After starting in `http` mode, the common routes are:
 | `publicVideo.pagePath`         | Public video playback page   |
 | `publicVideo.pagePath + /file` | MP4 streaming endpoint       |
 
-`/healthz` is intentionally unauthenticated and not application-rate-limited;
-it exposes only `{ "ok": true }`. Restrict or rate-limit it at the reverse proxy
-if public health probing is not desired.
+`/healthz` is intentionally unauthenticated, exposes only `{ "ok": true }`, and
+shares the configured public-route rate limit with the legal and video routes.
 
 ## HTTP Authentication
 

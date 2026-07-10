@@ -153,6 +153,51 @@ describe("HTTP MCP server", () => {
     expect(second.status).toBe(429);
   });
 
+  it("uses the configured trusted-proxy hop when keying client rate limits", async () => {
+    const proxiedRuntime = createHttpRuntime(
+      { ...testConfig, trustProxyHops: 1, mcpRateLimitPerMinute: 1 },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(proxiedRuntime.app);
+    const postFrom = (forwardedFor: string) =>
+      fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { "x-forwarded-for": forwardedFor },
+      });
+
+    const first = await postFrom("198.51.100.1, 203.0.113.10");
+    const sameTrustedPosition = await postFrom("198.51.100.2, 203.0.113.10");
+    const differentTrustedPosition = await postFrom("198.51.100.2, 203.0.113.11");
+
+    expect(first.status).toBe(401);
+    expect(sameTrustedPosition.status).toBe(429);
+    expect(differentTrustedPosition.status).toBe(401);
+  });
+
+  it("rate-limits the runtime-wired public video file route", async () => {
+    const fixturePath = fileURLToPath(new URL("./fixtures/sample.pdf", import.meta.url));
+    const videoRuntime = createHttpRuntime(
+      {
+        ...testConfig,
+        publicFileRateLimitPerMinute: 1,
+        publicVideo: {
+          title: "Rate Limit Test",
+          pagePath: "/media/video",
+          filePath: fixturePath,
+        },
+      },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(videoRuntime.app);
+
+    const first = await fetch(`${baseUrl}/media/video/file`);
+    await first.arrayBuffer();
+    const second = await fetch(`${baseUrl}/media/video/file`);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(429);
+  });
+
   it("binds sessions to the bearer token that initialized them", async () => {
     const baseUrl = await start();
     const sessionId = await initialize(baseUrl, "lv_live_owner");

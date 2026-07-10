@@ -63,13 +63,7 @@ export async function maybeDeliverToolEmail(
       attempted: false,
       enabled: true,
       recipients,
-      failed: recipients.length,
-      skipped_reason: "Email delivery failed after the qURL was created.",
-      results: recipients.map((email) => ({
-        email,
-        success: false,
-        error: "Email delivery could not be completed.",
-      })),
+      skipped_reason: "Email delivery was not attempted because delivery setup failed.",
     };
   }
 }

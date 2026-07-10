@@ -317,8 +317,7 @@ describe("createQurlTool", () => {
       expect(parsed.email_delivery).toEqual(
         expect.objectContaining({
           attempted: false,
-          failed: 1,
-          skipped_reason: "Email delivery failed after the qURL was created.",
+          skipped_reason: "Email delivery was not attempted because delivery setup failed.",
         }),
       );
     });

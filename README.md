@@ -21,58 +21,61 @@ It currently supports:
 
 ## Runtime Modes
 
-| Mode | Purpose | Start Command | Typical Use Case |
-| --- | --- | --- | --- |
-| `stdio` | Local subprocess MCP server | `npm run start` | Claude Desktop, Cursor, Codex, and other local MCP clients |
-| `http` | Authenticated remote MCP server | `npm run start:http` | Remote agent runtimes behind HTTPS |
+| Mode    | Purpose                         | Start Command        | Typical Use Case                                           |
+| ------- | ------------------------------- | -------------------- | ---------------------------------------------------------- |
+| `stdio` | Local subprocess MCP server     | `npm run start`      | Claude Desktop, Cursor, Codex, and other local MCP clients |
+| `http`  | Authenticated remote MCP server | `npm run start:http` | Remote agent runtimes behind HTTPS                         |
 
 ## Feature Map
 
 ### qURL Management Tools
 
-| Tool | Description |
-| --- | --- |
-| `create_qurl` | Create a new qURL |
-| `resolve_qurl` | Resolve an access token into a protected target URL |
-| `list_qurls` | List qURL resources |
-| `get_qurl` | Fetch details for a single qURL |
-| `delete_qurl` | Delete a qURL |
-| `extend_qurl` | Extend qURL expiration |
-| `update_qurl` | Update qURL metadata or expiration |
-| `mint_link` | Mint a new access link for an existing resource |
-| `batch_create_qurls` | Create multiple qURLs in one request |
-| `revoke_qurl_token` | Revoke a specific token |
-| `update_qurl_token` | Update a specific token |
-| `list_qurl_sessions` | List active access sessions |
-| `terminate_qurl_sessions` | Terminate one or all active sessions |
+| Tool                      | Description                                         |
+| ------------------------- | --------------------------------------------------- |
+| `create_qurl`             | Create a new qURL                                   |
+| `resolve_qurl`            | Resolve an access token into a protected target URL |
+| `list_qurls`              | List qURL resources                                 |
+| `get_qurl`                | Fetch details for a single qURL                     |
+| `delete_qurl`             | Delete a qURL                                       |
+| `extend_qurl`             | Extend qURL expiration                              |
+| `update_qurl`             | Update qURL metadata or expiration                  |
+| `mint_link`               | Mint a new access link for an existing resource     |
+| `batch_create_qurls`      | Create multiple qURLs in one request                |
+| `revoke_qurl_token`       | Revoke a specific token                             |
+| `update_qurl_token`       | Update a specific token                             |
+| `list_qurl_sessions`      | List active access sessions                         |
+| `terminate_qurl_sessions` | Terminate one or all active sessions                |
 
 ### Upload Tools
 
-| Tool | Mode | Description |
-| --- | --- | --- |
-| `upload_file_qurl` | `stdio` | Upload a local file and mint a qURL |
-| `upload_file_data_qurl` | `http` | Upload base64 file content and mint a qURL |
-| `upload_text_qurl` | `http` | Upload text content and mint a qURL |
+| Tool                    | Mode    | Description                                |
+| ----------------------- | ------- | ------------------------------------------ |
+| `upload_file_qurl`      | `stdio` | Upload a local file and mint a qURL        |
+| `upload_file_data_qurl` | `http`  | Upload base64 file content and mint a qURL |
+| `upload_text_qurl`      | `http`  | Upload text content and mint a qURL        |
 
 `upload_file_qurl` is intentionally stdio-only. It can read any supported
 PDF/image that the local MCP process user can access, so agents should invoke
-it only for a path the user explicitly selected for sharing. HTTP mode never
-registers this host-file tool.
+it only for a path the user explicitly selected for sharing. Do not expose it
+to untrusted prompts or autonomous agents: prompt injection could otherwise
+select another readable PDF/image on the host. Run stdio under an OS account
+whose filesystem access is limited to intended shareable content. HTTP mode
+never registers this host-file tool.
 
 ### MCP Resources
 
-| URI | Description |
-| --- | --- |
-| `qurl://links` | Current qURL list |
+| URI            | Description                         |
+| -------------- | ----------------------------------- |
+| `qurl://links` | Current qURL list                   |
 | `qurl://usage` | Current quota and usage information |
 
 ### MCP Prompts
 
-| Prompt | Description |
-| --- | --- |
+| Prompt             | Description                       |
+| ------------------ | --------------------------------- |
 | `secure_a_service` | Secure service integration prompt |
-| `audit_links` | Link audit prompt |
-| `rotate_access` | Access rotation prompt |
+| `audit_links`      | Link audit prompt                 |
+| `rotate_access`    | Access rotation prompt            |
 
 ## Quick Start
 
@@ -132,20 +135,20 @@ not committed.
 
 Their responsibilities are:
 
-| File | Purpose |
-| --- | --- |
+| File                   | Purpose                                                     |
+| ---------------------- | ----------------------------------------------------------- |
 | `qurl-mcp.config.json` | Shared runtime config used by both `stdio` and `http` modes |
-| `qurl-mcp.http.json` | HTTP-only server listener and public access config |
+| `qurl-mcp.http.json`   | HTTP-only server listener and public access config          |
 
 ## qurl-mcp.config.json Reference
 
 ### Shared Core Settings
 
-| Field | Purpose |
-| --- | --- |
-| `maxUploadFileDataBytes` | Limits decoded and local file uploads (default `10mb`) |
-| `defaultQurlApiUrl` | Base URL of the qURL backend API |
-| `defaultQurlConnectorUrl` | Base URL of the upload connector |
+| Field                     | Purpose                                                |
+| ------------------------- | ------------------------------------------------------ |
+| `maxUploadFileDataBytes`  | Limits decoded and local file uploads (default `10mb`) |
+| `defaultQurlApiUrl`       | Base URL of the qURL backend API                       |
+| `defaultQurlConnectorUrl` | Base URL of the upload connector                       |
 
 Set `QURL_API_KEY` in the environment for `stdio` mode. In HTTP mode, every
 client request supplies its own qURL API key as a bearer token.
@@ -159,19 +162,19 @@ for loopback development endpoints.
 
 ### SMTP Settings
 
-| Field | Purpose |
-| --- | --- |
-| `smtp.host` | SMTP server hostname |
-| `smtp.port` | SMTP server port |
-| `smtp.secure` | Whether SMTP uses a secure connection |
-| `smtp.username` | SMTP login username |
-| `smtp.password` | SMTP login password or app-specific code |
-| `smtp.fromEmail` | Sender email address |
-| `smtp.fromName` | Sender display name |
-| `smtp.allowedRecipients` | Optional exact-address allowlist |
-| `smtp.allowedRecipientDomains` | Optional domain allowlist |
-| `smtp.maxRecipientsPerMessage` | Per-message recipient cap (default `10`) |
-| `smtp.maxRecipientsPerHour` | Per-qURL-key attempted-recipient cap per fixed hourly window (default `100`) |
+| Field                          | Purpose                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `smtp.host`                    | SMTP server hostname                                                         |
+| `smtp.port`                    | SMTP server port                                                             |
+| `smtp.secure`                  | Whether SMTP uses a secure connection                                        |
+| `smtp.username`                | SMTP login username                                                          |
+| `smtp.password`                | SMTP login password or app-specific code                                     |
+| `smtp.fromEmail`               | Sender email address                                                         |
+| `smtp.fromName`                | Sender display name                                                          |
+| `smtp.allowedRecipients`       | Optional exact-address allowlist                                             |
+| `smtp.allowedRecipientDomains` | Optional domain allowlist                                                    |
+| `smtp.maxRecipientsPerMessage` | Per-message recipient cap (default `10`)                                     |
+| `smtp.maxRecipientsPerHour`    | Per-qURL-key attempted-recipient cap per fixed hourly window (default `100`) |
 
 These settings are used when email delivery is requested by tools such as:
 
@@ -190,6 +193,9 @@ is not shared across replicas. Operators running multiple instances should
 enforce a corresponding aggregate limit at the SMTP provider or gateway.
 The quota uses a fixed one-hour window that starts with the first attempted
 delivery after the prior window expires.
+Generated qURL links are included in the plain-text email body. Restrict
+recipients with the SMTP allowlists and configure transport encryption at the
+SMTP server/provider when link confidentiality matters.
 
 Prefer environment variables for SMTP credentials and policy:
 `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, `QURL_SMTP_FROM_EMAIL`,
@@ -199,11 +205,11 @@ Prefer environment variables for SMTP credentials and policy:
 
 ### Public Video Page Settings
 
-| Field | Purpose |
-| --- | --- |
-| `publicVideo.title` | Title shown on the public video page |
+| Field                  | Purpose                                |
+| ---------------------- | -------------------------------------- |
+| `publicVideo.title`    | Title shown on the public video page   |
 | `publicVideo.pagePath` | Public path of the video playback page |
-| `publicVideo.filePath` | Absolute server path of the MP4 file |
+| `publicVideo.filePath` | Absolute server path of the MP4 file   |
 
 When configured, the HTTP server additionally exposes:
 
@@ -212,19 +218,19 @@ When configured, the HTTP server additionally exposes:
 
 ## qurl-mcp.http.json Reference
 
-| Field | Purpose |
-| --- | --- |
-| `port` | HTTP MCP listener port |
-| `host` | HTTP MCP bind address |
-| `baseUrl` | Public base URL of the service |
-| `allowedHosts` | Host allowlist for Host header validation |
-| `trustProxyHops` | Exact trusted reverse-proxy hop count (default `0`) |
-| `maxSessions` | Hard cap on live MCP sessions (default `1000`) |
-| `maxUnvalidatedSessions` | Cap on sessions that have not completed a downstream qURL API call (default `100`) |
-| `sessionIdleTtlMs` | Idle session eviction window (default 15 minutes) |
-| `unvalidatedSessionTtlMs` | Absolute validation deadline for never-validated bearer sessions (default 1 minute) |
-| `mcpRateLimitPerMinute` | Per-client `/mcp` request limit (default `120`) |
-| `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`) |
+| Field                          | Purpose                                                                             |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `port`                         | HTTP MCP listener port                                                              |
+| `host`                         | HTTP MCP bind address                                                               |
+| `baseUrl`                      | Public base URL of the service                                                      |
+| `allowedHosts`                 | Host allowlist for Host header validation                                           |
+| `trustProxyHops`               | Exact trusted reverse-proxy hop count (default `0`)                                 |
+| `maxSessions`                  | Hard cap on live MCP sessions (default `1000`)                                      |
+| `maxUnvalidatedSessions`       | Cap on sessions that have not completed a downstream qURL API call (default `100`)  |
+| `sessionIdleTtlMs`             | Idle session eviction window (default 15 minutes)                                   |
+| `unvalidatedSessionTtlMs`      | Absolute validation deadline for never-validated bearer sessions (default 1 minute) |
+| `mcpRateLimitPerMinute`        | Per-client `/mcp` request limit (default `120`)                                     |
+| `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`)                               |
 
 The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 `allowedHosts` is explicitly configured. Set `trustProxyHops` (or
@@ -268,14 +274,14 @@ Do not commit API keys, SMTP credentials, or private file-system paths.
 
 After starting in `http` mode, the common routes are:
 
-| Route | Purpose |
-| --- | --- |
-| `/mcp` | Main remote MCP endpoint |
-| `/healthz` | Health check endpoint |
-| `/legal/privacy` | Public privacy policy page |
-| `/legal/terms` | Public terms of service page |
-| `publicVideo.pagePath` | Public video playback page |
-| `publicVideo.pagePath + /file` | MP4 streaming endpoint |
+| Route                          | Purpose                      |
+| ------------------------------ | ---------------------------- |
+| `/mcp`                         | Main remote MCP endpoint     |
+| `/healthz`                     | Health check endpoint        |
+| `/legal/privacy`               | Public privacy policy page   |
+| `/legal/terms`                 | Public terms of service page |
+| `publicVideo.pagePath`         | Public video playback page   |
+| `publicVideo.pagePath + /file` | MP4 streaming endpoint       |
 
 ## HTTP Authentication
 
@@ -285,11 +291,11 @@ ID cannot be reused with a different credential.
 
 Configure remote MCP clients with:
 
-| Setting | Value |
-| --- | --- |
+| Setting        | Value                             |
+| -------------- | --------------------------------- |
 | MCP Server URL | Your public HTTPS URL plus `/mcp` |
-| Authentication | Bearer token |
-| Token | The caller's qURL API key |
+| Authentication | Bearer token                      |
+| Token          | The caller's qURL API key         |
 
 If a client only supports OAuth discovery, place an OAuth-compatible gateway
 in front of this server rather than exposing `/mcp` without authentication.
@@ -336,6 +342,10 @@ If you deploy with Docker, make sure the container can still access the correct 
 
 Run HTTP mode locally in Docker:
 
+The image defaults to the stdio entry point and the HTTP server defaults to
+container-local loopback. HTTP deployments must override the command and bind
+to `0.0.0.0` with an explicit Host allowlist:
+
 ```bash
 docker run --rm -p 3000:3000 \
   -e MCP_HOST=0.0.0.0 \
@@ -350,16 +360,16 @@ listener directly when proxy trust is enabled.
 
 ## Common Commands
 
-| Command | Purpose |
-| --- | --- |
-| `npm run build` | Compile TypeScript |
-| `npm test` | Run tests |
-| `npm run lint` | Run ESLint |
-| `npm run dev` | TypeScript watch mode |
-| `npm run format` | Format source code |
-| `npm run format:check` | Check formatting |
-| `npm run start` | Start stdio mode |
-| `npm run start:http` | Start HTTP mode |
+| Command                | Purpose               |
+| ---------------------- | --------------------- |
+| `npm run build`        | Compile TypeScript    |
+| `npm test`             | Run tests             |
+| `npm run lint`         | Run ESLint            |
+| `npm run dev`          | TypeScript watch mode |
+| `npm run format`       | Format source code    |
+| `npm run format:check` | Check formatting      |
+| `npm run start`        | Start stdio mode      |
+| `npm run start:http`   | Start HTTP mode       |
 
 ## Recommended Deployment Order
 

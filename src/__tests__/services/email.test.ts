@@ -176,6 +176,65 @@ describe("sendEmailMessage", () => {
     expect(nodemailerMocks.close).toHaveBeenCalledOnce();
   });
 
+  it("configures implicit TLS when smtp.secure is true", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 465,
+          secure: true,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+    nodemailerMocks.sendMail.mockResolvedValue({ messageId: "msg-tls" });
+
+    const result = await sendEmailMessage({
+      to: ["alice@example.com"],
+      subject: "Secure link ready",
+      text: "Body",
+    });
+
+    expect(result.sent).toBe(1);
+    expect(nodemailerMocks.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ port: 465, secure: true }),
+    );
+  });
+
+  it("rejects a message above the configured per-message recipient cap", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+          maxRecipientsPerMessage: 1,
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+
+    const result = await sendEmailMessage({
+      to: ["alice@example.com", "bob@example.com"],
+      subject: "Secure link ready",
+      text: "Body",
+    });
+
+    expect(result.attempted).toBe(false);
+    expect(result.skipped_reason).toContain("per-message limit of 1");
+    expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
+  });
+
   it("enforces recipient allowlists without attempting blocked deliveries", async () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(
@@ -243,6 +302,7 @@ describe("sendEmailMessage", () => {
       subject: "First",
       text: "Body",
     });
+    now.mockReturnValue(60 * 60 * 1000 - 1);
     const second = await sendEmailMessage({
       to: ["second@example.com"],
       subject: "Second",

@@ -182,6 +182,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           session.activeRequests === 0 &&
           session.disconnectedAt !== undefined &&
           now - session.disconnectedAt >=
+            // A deliberately shorter configured idle TTL remains authoritative.
             Math.min(DISCONNECTED_SESSION_GRACE_MS, config.sessionIdleTtlMs)
         ) {
           return true;
@@ -448,9 +449,12 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
           return;
         }
-        const unvalidatedSessionCount = [...sessions.values()].filter(
-          (session) => !session.credentialValidated,
-        ).length;
+        let unvalidatedSessionCount = 0;
+        let credentialSessionCount = 0;
+        for (const session of sessions.values()) {
+          if (!session.credentialValidated) unvalidatedSessionCount += 1;
+          if (session.bearerTokenDigest.equals(bearerTokenDigest)) credentialSessionCount += 1;
+        }
         if (unvalidatedSessionCount + pendingInitializations >= config.maxUnvalidatedSessions) {
           rejectJsonRpc(
             res,
@@ -459,9 +463,6 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           );
           return;
         }
-        const credentialSessionCount = [...sessions.values()].filter((session) =>
-          session.bearerTokenDigest.equals(bearerTokenDigest),
-        ).length;
         const pendingForCredential = pendingInitializationsByCredential.get(credentialKey) ?? 0;
         if (credentialSessionCount + pendingForCredential >= config.maxSessionsPerCredential) {
           rejectJsonRpc(

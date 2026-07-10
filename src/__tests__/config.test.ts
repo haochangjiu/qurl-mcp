@@ -6,6 +6,7 @@ describe("service URL security helpers", () => {
     expect(isLoopbackHostname("::1")).toBe(true);
     expect(isLoopbackHostname("0:0:0:0:0:0:0:1")).toBe(true);
     expect(isLoopbackHostname("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopbackHostname("::FFFF:7F00:0001")).toBe(true);
     expect(isLoopbackHostname("127.255.255.255")).toBe(true);
     expect(isLoopbackHostname(new URL("http://2130706433:8080").hostname)).toBe(true);
   });

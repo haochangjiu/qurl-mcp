@@ -13,6 +13,7 @@ import {
   emailDeliveryInputSchema,
   maybeDeliverToolEmail,
   toEmailAugmentedResult,
+  uploadEmailDetailLines,
 } from "./email-delivery.js";
 import { uploadMintOptionsShape } from "./upload-mint-options.js";
 import {
@@ -103,6 +104,9 @@ export async function uploadLocalFileAndMint(
 ) {
   // Preflight config before reading local files so misconfigured hosts fail fast.
   const sourcePath = resolve(input.file_path);
+  // O_NOFOLLOW protects the final component. Intermediate directory symlinks
+  // still follow normal filesystem semantics; this tool is stdio-only and the
+  // local user explicitly chooses the server-host path to share.
   const fileName = normalizeFileName(input.file_name ?? sourcePath);
   const contentType = input.content_type ?? inferContentType(fileName);
   if (!contentType) {
@@ -177,15 +181,15 @@ export function uploadFileQurlTool(
         allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
         delivery: input.email_delivery,
         defaultSubject: "Your secure file access link is ready",
-        detailLines: [
-          "A secure qURL file link has been created for you.",
-          `File Name: ${result.file_name}`,
-          `Content Type: ${result.content_type}`,
-          `Secure Link: ${result.qurl_link}`,
-          `Expires At: ${result.expires_at}`,
-          ...(result.qurl_site ? [`qURL Site: ${result.qurl_site}`] : []),
-          ...(input.label ? [`Label: ${input.label}`] : []),
-        ],
+        detailLines: uploadEmailDetailLines({
+          intro: "A secure qURL file link has been created for you.",
+          fileName: result.file_name,
+          contentType: result.content_type,
+          qurlLink: result.qurl_link,
+          expiresAt: result.expires_at,
+          qurlSite: result.qurl_site,
+          label: input.label,
+        }),
       });
 
       return toEmailAugmentedResult(result, emailResult);

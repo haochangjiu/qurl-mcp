@@ -834,6 +834,23 @@ describe("HTTP MCP server", () => {
     }
   });
 
+  it("does not let a mismatched bearer delete another credential's session", async () => {
+    const baseUrl = await start();
+    const sessionId = await initialize(baseUrl, "lv_live_delete_owner");
+
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "DELETE",
+      headers: {
+        authorization: "Bearer lv_live_delete_attacker",
+        accept: "application/json, text/event-stream",
+        "mcp-session-id": sessionId,
+      },
+    });
+
+    expect(response.status).toBe(404);
+    expect(getActiveSessionCount()).toBe(1);
+  });
+
   it("rejects Host headers outside the loopback allowlist", async () => {
     const baseUrl = await start();
     expect(await requestWithHost(`${baseUrl}/healthz`, "attacker.example")).toBe(403);
@@ -964,7 +981,7 @@ describe("public video range streaming", () => {
 
   it("adds defensive headers when the configured video file is missing", async () => {
     const videoApp = express();
-    videoApp.get("/file", (req, res) =>
+    videoApp.get("/file", rateLimit({ windowMs: 60_000, limit: 100 }), (req, res) =>
       streamPublicVideo(req, res, "/definitely/missing/video.mp4"),
     );
     const baseUrl = await start(videoApp);

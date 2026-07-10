@@ -11,6 +11,7 @@ import {
   emailDeliveryInputSchema,
   maybeDeliverToolEmail,
   toEmailAugmentedResult,
+  uploadEmailDetailLines,
 } from "./email-delivery.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 import { getConnectorConfig } from "./upload-file-shared.js";
@@ -105,16 +106,16 @@ export function uploadTextQurlTool(
           allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
           delivery: input.email_delivery,
           defaultSubject: "Your secure text access link is ready",
-          detailLines: [
-            "A secure qURL text link has been created for you.",
-            `File Name: ${result.file_name}`,
-            `Content Type: ${result.content_type}`,
-            `Secure Link: ${result.qurl_link}`,
-            `Expires At: ${result.expires_at}`,
-            ...(result.qurl_site ? [`qURL Site: ${result.qurl_site}`] : []),
-            ...(input.label ? [`Label: ${input.label}`] : []),
-            `Payload Type: ${input.type}`,
-          ],
+          detailLines: uploadEmailDetailLines({
+            intro: "A secure qURL text link has been created for you.",
+            fileName: result.file_name,
+            contentType: result.content_type,
+            qurlLink: result.qurl_link,
+            expiresAt: result.expires_at,
+            qurlSite: result.qurl_site,
+            label: input.label,
+            extraLines: [`Payload Type: ${input.type}`],
+          }),
         });
 
         return toEmailAugmentedResult(result, emailResult);

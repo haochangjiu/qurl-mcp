@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
-import { isEmailAddress } from "./email-addresses.js";
+import { isEmailAddress, normalizeEmailAddress, normalizeEmailDomain } from "./email-addresses.js";
 
 export interface SmtpConfig {
   host: string;
@@ -72,7 +73,43 @@ export const MAX_UPLOAD_FILE_DATA_BYTES = 100 * 1024 * 1024;
  * Config is loaded once per path and reused for the lifetime of the process.
  * Call `clearRuntimeConfigCache()` to force a reload (useful for testing).
  */
-const runtimeConfigCache = new Map<string, RuntimeConfig>();
+const RUNTIME_CONFIG_ENV_KEYS = [
+  "MCP_MAX_UPLOAD_FILE_DATA_BYTES",
+  "QURL_API_KEY",
+  "QURL_API_URL",
+  "QURL_CONNECTOR_URL",
+  "QURL_PUBLIC_VIDEO_FILE_PATH",
+  "QURL_PUBLIC_VIDEO_PAGE_PATH",
+  "QURL_PUBLIC_VIDEO_TITLE",
+  "QURL_SMTP_ALLOWED_RECIPIENTS",
+  "QURL_SMTP_ALLOWED_RECIPIENT_DOMAINS",
+  "QURL_SMTP_FROM_EMAIL",
+  "QURL_SMTP_FROM_NAME",
+  "QURL_SMTP_HOST",
+  "QURL_SMTP_MAX_RECIPIENTS_PER_HOUR",
+  "QURL_SMTP_MAX_RECIPIENTS_PER_MESSAGE",
+  "QURL_SMTP_PASSWORD",
+  "QURL_SMTP_PORT",
+  "QURL_SMTP_SECURE",
+  "QURL_SMTP_USERNAME",
+] as const;
+
+const runtimeConfigCache = new Map<
+  string,
+  { environmentFingerprint: string; config: RuntimeConfig }
+>();
+
+function getRuntimeConfigEnvironmentFingerprint(): string {
+  const hash = createHash("sha256");
+  for (const key of RUNTIME_CONFIG_ENV_KEYS) {
+    hash
+      .update(key)
+      .update("\0")
+      .update(process.env[key] ?? "")
+      .update("\0");
+  }
+  return hash.digest("hex");
+}
 
 const SIZE_UNITS = new Map<string, number>([
   ["b", 1],
@@ -318,15 +355,21 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
   if (fromName && (fromName.length > 200 || /[\r\n]/.test(fromName))) {
     throw new Error("SMTP fromName must be a single line of at most 200 characters.");
   }
-  const allowedRecipients = parseCsvList(
+  const allowedRecipientValues = parseCsvList(
     process.env.QURL_SMTP_ALLOWED_RECIPIENTS ?? fileConfig?.allowedRecipients,
   );
+  const allowedRecipients = allowedRecipientValues
+    ? Array.from(new Set(allowedRecipientValues.map(normalizeEmailAddress)))
+    : undefined;
   if (allowedRecipients?.some((recipient) => !isEmailAddress(recipient))) {
     throw new Error("SMTP allowedRecipients must contain valid email addresses.");
   }
-  const allowedRecipientDomains = parseCsvList(
+  const allowedRecipientDomainValues = parseCsvList(
     process.env.QURL_SMTP_ALLOWED_RECIPIENT_DOMAINS ?? fileConfig?.allowedRecipientDomains,
   );
+  const allowedRecipientDomains = allowedRecipientDomainValues
+    ? Array.from(new Set(allowedRecipientDomainValues.map(normalizeEmailDomain)))
+    : undefined;
   if (
     allowedRecipientDomains?.some(
       (domain) =>
@@ -355,7 +398,7 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
     secure,
     username,
     password,
-    fromEmail,
+    fromEmail: normalizeEmailAddress(fromEmail),
     fromName,
     allowedRecipients,
     allowedRecipientDomains,
@@ -378,16 +421,18 @@ function resolveSmtpFieldValues(fileConfig: Partial<SmtpConfig> | undefined) {
 
 /**
  * Load runtime configuration from file and environment variables.
- * Results are cached per config path to avoid repeated file reads.
+ * Results are cached per config path and environment fingerprint to avoid
+ * repeated file reads without silently ignoring embedding-time env changes.
  *
  * @param configPath - Path to config file (defaults to getDefaultConfigPath())
  * @returns Resolved runtime configuration
  */
 export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeConfig {
   const resolvedPath = resolve(configPath);
+  const environmentFingerprint = getRuntimeConfigEnvironmentFingerprint();
   const cached = runtimeConfigCache.get(resolvedPath);
-  if (cached) {
-    return cached;
+  if (cached?.environmentFingerprint === environmentFingerprint) {
+    return cached.config;
   }
 
   const fileConfig = parseConfigFile(configPath);
@@ -419,7 +464,7 @@ export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeC
     publicVideo: resolvePublicVideoConfig(fileConfig.publicVideo),
   };
 
-  runtimeConfigCache.set(resolvedPath, config);
+  runtimeConfigCache.set(resolvedPath, { environmentFingerprint, config });
   return config;
 }
 

@@ -193,6 +193,9 @@ describe("public video config", () => {
     const config = loadRuntimeConfig(configPath);
 
     expect(config.qurlApiKey).toBe("env-key");
+
+    process.env.QURL_API_KEY = "rotated-env-key";
+    expect(loadRuntimeConfig(configPath).qurlApiKey).toBe("rotated-env-key");
   });
 
   it("bounds upload memory and validates service URLs without breaking internal HTTP APIs", () => {

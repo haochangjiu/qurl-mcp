@@ -38,6 +38,30 @@ export interface ToolEmailInput {
   detailLines: string[];
 }
 
+export interface UploadEmailDetails {
+  intro: string;
+  fileName: string;
+  contentType: string;
+  qurlLink: string;
+  expiresAt: string;
+  qurlSite?: string;
+  label?: string;
+  extraLines?: string[];
+}
+
+export function uploadEmailDetailLines(details: UploadEmailDetails): string[] {
+  return [
+    details.intro,
+    `File Name: ${details.fileName}`,
+    `Content Type: ${details.contentType}`,
+    `Secure Link: ${details.qurlLink}`,
+    `Expires At: ${details.expiresAt}`,
+    ...(details.qurlSite ? [`qURL Site: ${details.qurlSite}`] : []),
+    ...(details.label ? [`Label: ${details.label}`] : []),
+    ...(details.extraLines ?? []),
+  ];
+}
+
 export function toEmailAugmentedResult<T extends object & { length?: never }>(
   base: T,
   emailResult: EmailDeliveryResult | undefined,
@@ -63,6 +87,23 @@ function getSanitizedDeliveryFailureReason(error: unknown): string {
   return "Email delivery was not attempted because delivery setup failed.";
 }
 
+function skippedDeliveryResult(recipients: string[], skippedReason: string): EmailDeliveryResult {
+  return {
+    attempted: false,
+    enabled: true,
+    recipients,
+    sent: 0,
+    failed: recipients.length,
+    results: recipients.map((email) => ({
+      email,
+      success: false,
+      skipped: true,
+      error: skippedReason,
+    })),
+    skipped_reason: skippedReason,
+  };
+}
+
 export async function maybeDeliverToolEmail(
   input: ToolEmailInput,
 ): Promise<EmailDeliveryResult | undefined> {
@@ -74,13 +115,21 @@ export async function maybeDeliverToolEmail(
     input.detailLines.join("\n"),
     "Sent by qURL.",
   ].filter((section): section is string => typeof section === "string" && section.length > 0);
+  const text = sections.join("\n\n");
+  const recipients = uniqueRecipients(input.delivery.to);
+  if (text.length > 10_000) {
+    return skippedDeliveryResult(
+      recipients,
+      "Email delivery was not attempted because the assembled message exceeds 10,000 characters.",
+    );
+  }
 
   try {
     return await sendEmailMessage(
       {
         to: input.delivery.to,
         subject,
-        text: sections.join("\n\n"),
+        text,
       },
       { allowServerApiKeyFallback: input.allowServerApiKeyFallback },
     );
@@ -89,21 +138,7 @@ export async function maybeDeliverToolEmail(
     // delivery failure into a failed tool call because qurl_link is one-shot
     // output that cannot be recovered later.
     console.error(`Email delivery failed after qURL creation (${formatErrorForLog(error)})`);
-    const recipients = uniqueRecipients(input.delivery.to);
     const skippedReason = getSanitizedDeliveryFailureReason(error);
-    return {
-      attempted: false,
-      enabled: true,
-      recipients,
-      sent: 0,
-      failed: recipients.length,
-      results: recipients.map((email) => ({
-        email,
-        success: false,
-        skipped: true,
-        error: skippedReason,
-      })),
-      skipped_reason: skippedReason,
-    };
+    return skippedDeliveryResult(recipients, skippedReason);
   }
 }

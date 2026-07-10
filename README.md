@@ -233,6 +233,8 @@ These settings are used when email delivery is requested by tools such as:
 
 If either recipient allowlist is configured, only an exact address or domain
 match is delivered. If both are empty, the message and hourly caps still apply.
+Addresses and domains are normalized to lowercase NFC/IDNA ASCII form and a
+trailing DNS root dot is removed before comparison and delivery.
 In HTTP mode, any caller with a valid qURL API key can request a server-side
 SMTP delivery. Configure `allowedRecipients` or `allowedRecipientDomains`
 before enabling SMTP on an Internet-facing HTTP deployment; empty allowlists

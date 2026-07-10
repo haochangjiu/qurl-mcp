@@ -11,6 +11,7 @@ import {
   emailDeliveryInputSchema,
   maybeDeliverToolEmail,
   toEmailAugmentedResult,
+  uploadEmailDetailLines,
 } from "./email-delivery.js";
 import {
   getConnectorConfig,
@@ -86,6 +87,9 @@ function normalizeBase64Input(input: string): {
   // "data:image/png;base64,"). Return its media type so callers do not need
   // to parse the same prefix again.
   const dataUrl = /^data:([^;,]*);base64,/i.exec(trimmed);
+  if (!dataUrl && trimmed.toLowerCase().startsWith("data:")) {
+    throw new Error("Only base64-encoded data URLs are supported.");
+  }
   const withoutDataUrl = dataUrl ? trimmed.slice(dataUrl[0].length) : trimmed;
 
   // Step 2: Remove whitespace (base64 from copy-paste often has line breaks)
@@ -219,15 +223,15 @@ export function uploadFileDataQurlTool(
         allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
         delivery: input.email_delivery,
         defaultSubject: "Your secure file access link is ready",
-        detailLines: [
-          "A secure qURL file link has been created for you.",
-          `File Name: ${fileName}`,
-          `Content Type: ${input.content_type}`,
-          `Secure Link: ${result.qurl_link}`,
-          `Expires At: ${result.expires_at}`,
-          ...(result.qurl_site ? [`qURL Site: ${result.qurl_site}`] : []),
-          ...(input.label ? [`Label: ${input.label}`] : []),
-        ],
+        detailLines: uploadEmailDetailLines({
+          intro: "A secure qURL file link has been created for you.",
+          fileName,
+          contentType: input.content_type,
+          qurlLink: result.qurl_link,
+          expiresAt: result.expires_at,
+          qurlSite: result.qurl_site,
+          label: input.label,
+        }),
       });
       return toEmailAugmentedResult(result, emailResult);
     }),

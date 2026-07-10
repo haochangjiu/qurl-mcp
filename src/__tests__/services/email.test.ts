@@ -402,7 +402,7 @@ describe("sendEmailMessage", () => {
           username: "mailer",
           password: "secret",
           fromEmail: "noreply@example.com",
-          allowedRecipientDomains: ["example.com"],
+          allowedRecipientDomains: ["EXAMPLE.COM."],
         },
       }),
     );

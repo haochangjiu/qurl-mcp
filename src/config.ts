@@ -405,10 +405,6 @@ export function clearRuntimeConfigCache(): void {
   runtimeConfigCache.clear();
 }
 
-export function loadRuntimeFileConfig(configPath = getDefaultConfigPath()): ConfigFileShape {
-  return parseConfigFile(configPath);
-}
-
 export function inspectSmtpConfig(configPath = getDefaultConfigPath()): SmtpConfigInspection {
   const fileConfig = parseConfigFile(configPath);
   const { host, port, secure, username, password, fromEmail, fromName } = resolveSmtpFieldValues(

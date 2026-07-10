@@ -1,5 +1,9 @@
+import { z } from "zod";
+
+const emailAddressSchema = z.email();
+
 export function isEmailAddress(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return emailAddressSchema.safeParse(value).success;
 }
 
 export function uniqueRecipients(recipients: string[]): string[] {

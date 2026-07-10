@@ -370,10 +370,17 @@ export async function uploadToConnector(
   const { apiKey, connectorURL } = connectorConfig;
   const uploadUrl = getConnectorUploadUrl(connectorURL);
   const form = new globalThis.FormData();
+  // BlobPart's DOM type excludes SharedArrayBuffer-backed views. Reuse the
+  // normal ArrayBuffer view without copying; only copy the theoretical shared
+  // buffer case into an ordinary Uint8Array.
+  const blobData: Uint8Array<ArrayBuffer> =
+    fileData.buffer instanceof ArrayBuffer
+      ? new Uint8Array(fileData.buffer, fileData.byteOffset, fileData.byteLength)
+      : new Uint8Array(fileData);
   form.append(
     "file",
     // lgtm[js/file-access-to-http] This tool explicitly uploads caller-provided bytes to the operator-configured connector.
-    new globalThis.Blob([Buffer.from(fileData)], { type: contentType }),
+    new globalThis.Blob([blobData], { type: contentType }),
     fileName,
   );
 

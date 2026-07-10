@@ -279,6 +279,10 @@ re-initialize before its next request. Both pending-session limits are
 configurable for clients with longer introspection-to-tool-call gaps. The
 deadline is absolute and applies regardless of activity, including an open SSE
 stream.
+The first downstream qURL operation must therefore complete before that
+deadline; an unusually slow first API call may be interrupted and the client
+must re-initialize. This fail-closed behavior prevents an invalid credential
+from extending its pending slot with a deliberately long-running request.
 Accepting a non-empty bearer during MCP initialization is intentional: it keeps
 protocol introspection available before the first qURL operation, while the
 pending-session cap, absolute deadline, and request rate limit bound invalid-key
@@ -299,6 +303,9 @@ global cap is required.
 
 By default, configuration is loaded from the two local JSON files above. If a
 file is absent, built-in defaults and environment variables are used.
+Relative config paths—including the defaults—are resolved from the process
+working directory. Set the explicit path variables below when a supervisor,
+`npx`, or an MCP host launches the server from a different directory.
 
 The following environment variables independently override the config file paths:
 

@@ -231,7 +231,10 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 Bearer credentials are conclusively validated by the first downstream qURL API
 call. Until then, sessions use the smaller pending-session cap and one-minute
 idle window, so arbitrary non-empty bearer strings cannot occupy the full
-session pool for the normal 15-minute TTL.
+session pool for the normal 15-minute TTL. A client that performs only MCP
+introspection remains pending by design; after an idle-window eviction it must
+re-initialize before its next request. Both pending-session limits are
+configurable for clients with longer introspection-to-tool-call gaps.
 
 ## Configuration Priority
 

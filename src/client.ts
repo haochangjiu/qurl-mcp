@@ -471,10 +471,11 @@ export class QURLClient implements IQURLClient {
       return result;
     } catch (err) {
       const translated = translateError(err);
-      // Authorization, ownership, and rate-limit failures still prove that the
-      // downstream API recognized the credential. A 401 does not, and
-      // network/5xx failures are deliberately inconclusive.
-      if (translated instanceof QURLAPIError && [403, 404, 429].includes(translated.statusCode)) {
+      // A downstream 403 proves that the API authenticated the credential but
+      // rejected its scope. Treat other failures conservatively: gateways may
+      // emit 404 or 429 before authentication, while 401/network/5xx responses
+      // are also inconclusive.
+      if (translated instanceof QURLAPIError && translated.statusCode === 403) {
         markRequestCredentialValidated();
       }
       throw translated;

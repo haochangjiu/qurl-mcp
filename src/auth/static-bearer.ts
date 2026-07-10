@@ -2,6 +2,9 @@ import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { QURLClient } from "../client.js";
 
+// This is intentionally shared, non-secret MCP metadata rather than an
+// authorization boundary. HTTP sessions are isolated by their bearer-token
+// digest and a separate per-session qURL client.
 export const PASSTHROUGH_BEARER_CLIENT_ID = "passthrough-bearer-client";
 // The MCP SDK requires an expiry for bearer middleware. Actual qURL key
 // expiry/revocation is enforced by the downstream API, so use a distant

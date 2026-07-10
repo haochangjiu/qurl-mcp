@@ -4,13 +4,26 @@ import { statSync } from "node:fs";
 import { createServer as createNodeServer, request, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  app,
-  closeAllSessions,
-  getActiveSessionCount,
-  streamPublicVideo,
-  sweepExpiredSessions,
-} from "../http.js";
+import { createHttpRuntime } from "../http.js";
+import type { HttpServerConfig } from "../http-config.js";
+
+const testConfig: HttpServerConfig = {
+  port: 3000,
+  host: "127.0.0.1",
+  baseUrl: "http://127.0.0.1:3000",
+  trustProxyHops: 0,
+  maxSessions: 100,
+  maxUnvalidatedSessions: 20,
+  sessionIdleTtlMs: 15 * 60 * 1000,
+  unvalidatedSessionTtlMs: 60 * 1000,
+  mcpRateLimitPerMinute: 10_000,
+  publicFileRateLimitPerMinute: 10_000,
+  maxUploadFileDataBytes: 10 * 1024 * 1024,
+  defaultQurlApiUrl: "https://api.layerv.ai",
+};
+const runtime = createHttpRuntime(testConfig, { version: "0.0.0-test" });
+const { app, closeAllSessions, getActiveSessionCount, streamPublicVideo, sweepExpiredSessions } =
+  runtime;
 
 const servers: Server[] = [];
 const bearerHeaders = (token: string) => ({
@@ -76,6 +89,17 @@ afterEach(async () => {
 });
 
 describe("HTTP MCP server", () => {
+  it("creates isolated apps and session registries from explicit config", () => {
+    const otherRuntime = createHttpRuntime(
+      { ...testConfig, baseUrl: "http://127.0.0.1:3001" },
+      { version: "0.0.0-test" },
+    );
+
+    expect(otherRuntime.app).not.toBe(app);
+    expect(otherRuntime.getActiveSessionCount()).toBe(0);
+    expect(getActiveSessionCount()).toBe(0);
+  });
+
   it("serves a protected health endpoint surface without Express metadata", async () => {
     const baseUrl = await start();
     const response = await fetch(`${baseUrl}/healthz`);

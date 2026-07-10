@@ -45,7 +45,13 @@ vi.mock("@layervai/qurl", async (importOriginal) => {
 
 import { QURLClient, QURLAPIError, MISSING_API_KEY_MESSAGE } from "../client.js";
 import { runWithRequestAuthContext } from "../auth/request-context.js";
-import { NotFoundError, AuthorizationError, NetworkError, RateLimitError } from "@layervai/qurl";
+import {
+  AuthenticationError,
+  AuthorizationError,
+  NetworkError,
+  NotFoundError,
+  RateLimitError,
+} from "@layervai/qurl";
 
 const newClient = (apiKey = "lv_live_key", baseURL = "https://api.test.layerv.ai") =>
   new QURLClient({ apiKey, baseURL });
@@ -328,9 +334,31 @@ describe("QURLClient adapter", () => {
       expect(err.requestId).toBe("req_9");
     });
 
-    it("does not validate the request credential on a downstream 401", async () => {
+    it("marks the request credential validated on a downstream 403", async () => {
       sdk.get.mockRejectedValue(
         new AuthorizationError({
+          status: 403,
+          code: "insufficient_scope",
+          title: "Forbidden",
+          detail: "missing qurl:read",
+        }),
+      );
+      let credentialValidated = false;
+
+      await runWithRequestAuthContext(
+        { markCredentialValidated: () => (credentialValidated = true) },
+        () =>
+          newClient()
+            .getQURL("r_x")
+            .catch(() => undefined),
+      );
+
+      expect(credentialValidated).toBe(true);
+    });
+
+    it("does not validate the request credential on a downstream 401", async () => {
+      sdk.get.mockRejectedValue(
+        new AuthenticationError({
           status: 401,
           code: "invalid_api_key",
           title: "Unauthorized",
@@ -350,15 +378,29 @@ describe("QURLClient adapter", () => {
       expect(credentialValidated).toBe(false);
     });
 
-    it("marks the request credential validated on a downstream 429", async () => {
-      sdk.get.mockRejectedValue(
-        new RateLimitError({
-          status: 429,
-          code: "rate_limited",
-          title: "Too Many Requests",
-          detail: "quota exceeded",
-        }),
-      );
+    it.each([
+      [
+        "404",
+        () =>
+          new NotFoundError({
+            status: 404,
+            code: "resource_not_found",
+            title: "Not Found",
+            detail: "resource missing",
+          }),
+      ],
+      [
+        "429",
+        () =>
+          new RateLimitError({
+            status: 429,
+            code: "rate_limited",
+            title: "Too Many Requests",
+            detail: "quota exceeded",
+          }),
+      ],
+    ])("does not validate the request credential on an inconclusive %s", async (_status, error) => {
+      sdk.get.mockRejectedValue(error());
       let credentialValidated = false;
 
       await runWithRequestAuthContext(
@@ -369,7 +411,7 @@ describe("QURLClient adapter", () => {
             .catch(() => undefined),
       );
 
-      expect(credentialValidated).toBe(true);
+      expect(credentialValidated).toBe(false);
     });
 
     it("translates a transport-level SDK error (NetworkError) to QURLAPIError", async () => {

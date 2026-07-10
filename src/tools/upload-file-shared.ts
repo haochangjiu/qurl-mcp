@@ -370,31 +370,3 @@ export async function uploadToConnector(
 
   return processConnectorResponse(response);
 }
-
-export async function uploadTextToConnector(
-  text: string,
-  fileName: string,
-  contentType: string,
-): Promise<ConnectorUploadResponse> {
-  return uploadToConnector(Buffer.from(text, "utf8"), fileName, contentType);
-}
-
-export async function uploadJsonToConnector(
-  payload: Record<string, unknown>,
-): Promise<ConnectorUploadResponse> {
-  const { apiKey, connectorURL } = getConnectorConfig();
-  const uploadUrl = getConnectorUploadUrl(connectorURL);
-  const body = JSON.stringify(payload); // lgtm[js/file-access-to-http] Explicit connector upload payload.
-  // lgtm[js/file-access-to-http] The validated destination and upload are the explicit behavior of this MCP tool.
-  const response = await fetchConnector(uploadUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body, // lgtm[js/file-access-to-http]
-  });
-
-  return processConnectorResponse(response);
-}

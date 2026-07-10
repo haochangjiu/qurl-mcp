@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { accessPolicySchema } from "./create-qurl.js";
+import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import {
   resourceIdSchema,
   toStructuredContent,
@@ -45,6 +46,11 @@ export const mintLinkBaseSchema = z.object({
         "Rejected if it exceeds the parent resource's session-duration cap.",
     ),
   access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
+  email_delivery: emailDeliveryInputSchema
+    .optional()
+    .describe(
+      "Optional email notification settings for sending the minted access link to one or more recipients.",
+    ),
 });
 
 export const mintLinkSchema = mintLinkBaseSchema.refine(
@@ -77,16 +83,29 @@ export function mintLinkTool(client: IQURLClient) {
     handler: withMissingApiKeyHandler(async (raw: z.infer<typeof mintLinkBaseSchema>) => {
       const parsed = mintLinkSchema.safeParse(raw);
       if (!parsed.success) return zodErrorToToolResult(parsed.error);
-      const { resource_id, ...body } = parsed.data;
+      const { resource_id, email_delivery, ...body } = parsed.data;
       const result = await client.mintLink(resource_id, body);
+      const emailResult = await maybeDeliverToolEmail({
+        delivery: email_delivery,
+        defaultSubject: "Your qURL access link is ready",
+        detailLines: [
+          "A new qURL access link has been minted for you.",
+          `Resource ID: ${resource_id}`,
+          `Secure Link: ${result.data.qurl_link}`,
+          `Expires At: ${result.data.expires_at}`,
+          ...(body.label ? [`Label: ${body.label}`] : []),
+          ...(result.data.type ? [`Type: ${result.data.type}`] : []),
+        ],
+      });
+      const payload = emailResult ? { ...result.data, email_delivery: emailResult } : result.data;
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result.data),
+            text: JSON.stringify(payload),
           },
         ],
-        structuredContent: toStructuredContent(result.data),
+        structuredContent: toStructuredContent(payload),
       };
     }),
   };

@@ -3,6 +3,12 @@ import { QURLAPIError } from "../../client.js";
 import { createQurlTool, createQurlSchema } from "../../tools/create-qurl.js";
 import { makeMockClient, sampleCreateQURLData } from "../helpers.js";
 
+vi.mock("../../services/email.js", () => ({
+  sendEmailMessage: vi.fn(),
+}));
+
+import { sendEmailMessage } from "../../services/email.js";
+
 const fixture = sampleCreateQURLData();
 
 describe("createQurlTool", () => {
@@ -50,6 +56,11 @@ describe("createQurlTool", () => {
         access_policy: {
           ip_allowlist: ["192.168.1.0/24"],
           geo_allowlist: ["US"],
+        },
+        email_delivery: {
+          to: ["alice@example.com", "bob@example.com"],
+          subject: "Subject",
+          message: "Hello",
         },
       });
       expect(result.success).toBe(true);
@@ -223,6 +234,71 @@ describe("createQurlTool", () => {
       await tool.handler(input);
 
       expect(mockCreate).toHaveBeenCalledWith(input);
+    });
+
+    it("sends email when email_delivery is provided", async () => {
+      const mockCreate = vi.fn().mockResolvedValue({ data: fixture });
+      vi.mocked(sendEmailMessage).mockResolvedValue({
+        attempted: true,
+        enabled: true,
+        recipients: ["alice@example.com", "bob@example.com"],
+        sent: 2,
+        failed: 0,
+        results: [
+          { email: "alice@example.com", success: true, message_id: "msg-1" },
+          { email: "bob@example.com", success: true, message_id: "msg-2" },
+        ],
+      });
+      const client = makeMockClient({ createQURL: mockCreate });
+      const tool = createQurlTool(client);
+
+      const result = await tool.handler({
+        target_url: "https://example.com/protected",
+        email_delivery: {
+          to: ["alice@example.com", "bob@example.com"],
+          message: "Here you go",
+        },
+      });
+
+      expect(vi.mocked(sendEmailMessage)).toHaveBeenCalledOnce();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.email_delivery).toEqual({
+        attempted: true,
+        enabled: true,
+        recipients: ["alice@example.com", "bob@example.com"],
+        sent: 2,
+        failed: 0,
+        results: [
+          { email: "alice@example.com", success: true, message_id: "msg-1" },
+          { email: "bob@example.com", success: true, message_id: "msg-2" },
+        ],
+      });
+    });
+
+    it("skips email cleanly when SMTP is not configured", async () => {
+      const mockCreate = vi.fn().mockResolvedValue({ data: fixture });
+      vi.mocked(sendEmailMessage).mockResolvedValue({
+        attempted: false,
+        enabled: false,
+        recipients: ["alice@example.com"],
+        skipped_reason: "SMTP is not configured.",
+      });
+      const client = makeMockClient({ createQURL: mockCreate });
+      const tool = createQurlTool(client);
+
+      const result = await tool.handler({
+        target_url: "https://example.com/protected",
+        email_delivery: { to: ["alice@example.com"] },
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.resource_id).toBe("r_test123");
+      expect(parsed.email_delivery).toEqual({
+        attempted: false,
+        enabled: false,
+        recipients: ["alice@example.com"],
+        skipped_reason: "SMTP is not configured.",
+      });
     });
   });
 });

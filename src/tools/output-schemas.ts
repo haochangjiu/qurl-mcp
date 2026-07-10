@@ -41,6 +41,26 @@ const accessPolicy = z
   })
   .describe("Access control policy snapshot for this token");
 
+export const emailDeliveryOutputSchema = z.object({
+  attempted: z.boolean(),
+  enabled: z.boolean(),
+  recipients: z.array(z.string()).optional(),
+  sent: z.number().optional(),
+  failed: z.number().optional(),
+  skipped_reason: z.string().optional(),
+  results: z
+    .array(
+      z.object({
+        email: z.string(),
+        success: z.boolean(),
+        skipped: z.boolean().optional(),
+        error: z.string().optional(),
+        message_id: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
 export const accessTokenOutputSchema = z
   .object({
     qurl_id: z.string(),
@@ -130,6 +150,7 @@ export const createQurlOutputSchema = z.object({
   expires_at: z.string(),
   label: z.string().optional(),
   type: z.string().optional().describe("Resource type echoed from the create request"),
+  email_delivery: emailDeliveryOutputSchema.optional(),
 });
 
 export const getQurlOutputSchema = qurlSchema;
@@ -182,6 +203,31 @@ export const mintLinkOutputSchema = z.object({
     .describe("Bare branded hostname for anchor text when the resource has a usable custom domain"),
   expires_at: z.string(),
   type: z.string().optional().describe("Resource type echoed from the underlying resource"),
+  email_delivery: emailDeliveryOutputSchema.optional(),
+});
+
+export const uploadFileQurlOutputSchema = z.object({
+  resource_id: z
+    .string()
+    .describe("Stable resource identifier (r_ prefix) returned by the connector"),
+  qurl_id: z.string().describe("Display-friendly qURL ID (q_ prefix) for the minted token"),
+  qurl_link: z
+    .string()
+    .describe("One-shot display access link for the uploaded file — share immediately"),
+  qurl_site: z
+    .string()
+    .optional()
+    .describe("Resource site URL when it could be read back from get_qurl"),
+  expires_at: z.string(),
+  file_name: z.string().describe("Filename registered with the connector"),
+  content_type: z.string().describe("MIME type used for the uploaded file"),
+  size_bytes: z.number().describe("Uploaded file size in bytes"),
+  branded_domain: z
+    .string()
+    .optional()
+    .describe("Bare branded hostname for anchor text when the resource has a usable custom domain"),
+  type: z.string().optional().describe("Resource type echoed from the minted token"),
+  email_delivery: emailDeliveryOutputSchema.optional(),
 });
 
 export const updateQurlTokenOutputSchema = accessTokenOutputSchema;

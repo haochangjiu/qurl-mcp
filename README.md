@@ -1,20 +1,101 @@
-# @layervai/qurl-mcp
+# qURL MCP
 
-[![npm version](https://img.shields.io/npm/v/@layervai/qurl-mcp.svg)](https://www.npmjs.com/package/@layervai/qurl-mcp)
+> A qURL MCP Server that supports both local `stdio` mode and remote `HTTP` mode for creating, managing, resolving, and sharing secure access links.
 
-> **⚠️ Renamed from `@layerv/qurl-mcp` in v0.4.0.** The old package is deprecated and will not receive further updates. If you're using `@layerv/qurl-mcp@0.3.x`, swap the scope in your MCP client config — same binary, same API key, no other changes.
+## Overview
 
-MCP server for qURL™ secure link management.
+`qURL MCP` exposes qURL capabilities to MCP clients, GPTs, ChatGPT, and other remote integrations.
 
-> **Quantum URL (qURL)** · The internet has a hidden layer. This is how you enter.
+It currently supports:
 
-## What it does
+- creating, reading, updating, and deleting qURLs
+- resolving access tokens
+- managing qURL tokens and sessions
+- uploading text or file content and generating qURLs
+- serving public legal pages
+- serving a configurable MP4 video playback page
 
-qURL MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that lets AI agents (Claude, GPT, Cursor, etc.) create, resolve, list, and manage qURL secure links natively. It supports local stdio clients and authenticated remote Streamable HTTP clients.
+## Runtime Modes
+
+| Mode | Purpose | Start Command | Typical Use Case |
+| --- | --- | --- | --- |
+| `stdio` | Local subprocess MCP server | `npm run start` | Claude Desktop, Cursor, Codex, and other local MCP clients |
+| `http` | Remote MCP server | `npm run start:http` | GPT / ChatGPT / public server deployment |
+
+## Feature Map
+
+### qURL Management Tools
+
+| Tool | Description |
+| --- | --- |
+| `create_qurl` | Create a new qURL |
+| `resolve_qurl` | Resolve an access token into a protected target URL |
+| `list_qurls` | List qURL resources |
+| `get_qurl` | Fetch details for a single qURL |
+| `delete_qurl` | Delete a qURL |
+| `extend_qurl` | Extend qURL expiration |
+| `update_qurl` | Update qURL metadata or expiration |
+| `mint_link` | Mint a new access link for an existing resource |
+| `batch_create_qurls` | Create multiple qURLs in one request |
+| `revoke_qurl_token` | Revoke a specific token |
+| `update_qurl_token` | Update a specific token |
+| `list_qurl_sessions` | List active access sessions |
+| `terminate_qurl_sessions` | Terminate one or all active sessions |
+
+### Upload Tools
+
+| Tool | Mode | Description |
+| --- | --- | --- |
+| `upload_file_qurl` | `stdio` | Upload a local file and mint a qURL |
+| `upload_file_data_qurl` | `http` | Upload base64 file content and mint a qURL |
+| `upload_text_qurl` | `http` | Upload text content and mint a qURL |
+
+### MCP Resources
+
+| URI | Description |
+| --- | --- |
+| `qurl://links` | Current qURL list |
+| `qurl://usage` | Current quota and usage information |
+
+### MCP Prompts
+
+| Prompt | Description |
+| --- | --- |
+| `secure_a_service` | Secure service integration prompt |
+| `audit_links` | Link audit prompt |
+| `rotate_access` | Access rotation prompt |
 
 ## Quick Start
 
-Add the server to your MCP client configuration (Claude Desktop, Claude Code, etc.):
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Build
+
+```bash
+npm run build
+```
+
+### 3. Start
+
+Local `stdio` mode:
+
+```bash
+npm run start
+```
+
+Remote `HTTP` mode:
+
+```bash
+npm run start:http
+```
+
+## MCP Client Example
+
+If you want to use this server in `stdio` mode with a local MCP client:
 
 ```json
 {
@@ -28,127 +109,197 @@ Add the server to your MCP client configuration (Claude Desktop, Claude Code, et
 }
 ```
 
-Replace `lv_live_xxx` with your actual API key. The key must have the appropriate scopes for the tools you intend to use (see below).
+## Configuration Files
 
-### Remote HTTP mode
-
-Build and start the remote server:
+Copy the tracked examples to create local configuration files:
 
 ```bash
-npm run build
-npm run start:http
+cp qurl-mcp.config.example.json qurl-mcp.config.json
+cp qurl-mcp.http.example.json qurl-mcp.http.json
 ```
 
-The HTTP server defaults to `127.0.0.1:3000` and exposes:
+The local files are gitignored so credentials and machine-specific paths are
+not committed.
+
+Their responsibilities are:
+
+| File | Purpose |
+| --- | --- |
+| `qurl-mcp.config.json` | Shared runtime config used by both `stdio` and `http` modes |
+| `qurl-mcp.http.json` | HTTP-only server listener and public access config |
+
+## qurl-mcp.config.json Reference
+
+### Shared Core Settings
+
+| Field | Purpose |
+| --- | --- |
+| `maxUploadFileDataBytes` | Limits the decoded file size accepted by `upload_file_data_qurl` |
+| `defaultQurlApiUrl` | Base URL of the qURL backend API |
+| `defaultQurlConnectorUrl` | Base URL of the upload connector |
+
+Set `QURL_API_KEY` in the environment for `stdio` mode. In HTTP mode, every
+client request supplies its own qURL API key as a bearer token.
+
+### SMTP Settings
+
+| Field | Purpose |
+| --- | --- |
+| `smtp.host` | SMTP server hostname |
+| `smtp.port` | SMTP server port |
+| `smtp.secure` | Whether SMTP uses a secure connection |
+| `smtp.username` | SMTP login username |
+| `smtp.password` | SMTP login password or app-specific code |
+| `smtp.fromEmail` | Sender email address |
+| `smtp.fromName` | Sender display name |
+
+These settings are used when email delivery is requested by tools such as:
+
+- `create_qurl`
+- `mint_link`
+- `upload_text_qurl`
+- `upload_file_data_qurl`
+
+Prefer `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, and
+`QURL_SMTP_FROM_EMAIL` environment variables for sensitive SMTP values.
+
+### Public Video Page Settings
+
+| Field | Purpose |
+| --- | --- |
+| `publicVideo.title` | Title shown on the public video page |
+| `publicVideo.pagePath` | Public path of the video playback page |
+| `publicVideo.filePath` | Absolute server path of the MP4 file |
+
+When configured, the HTTP server additionally exposes:
+
+- a public video playback page
+- a streaming endpoint for the MP4 file
+
+## qurl-mcp.http.json Reference
+
+| Field | Purpose |
+| --- | --- |
+| `port` | HTTP MCP listener port |
+| `host` | HTTP MCP bind address |
+| `baseUrl` | Public base URL of the service |
+| `allowedHosts` | Host allowlist for Host header validation |
+
+## Configuration Priority
+
+By default, configuration is loaded from the two local JSON files above. If a
+file is absent, built-in defaults and environment variables are used.
+
+The following environment variables can override the config file paths:
+
+- `QURL_MCP_CONFIG`
+- `QURL_MCP_HTTP_CONFIG`
+
+Do not commit API keys, SMTP credentials, or private file-system paths.
+
+## HTTP Routes
+
+After starting in `http` mode, the common routes are:
 
 | Route | Purpose |
-|------|---------|
-| `POST /mcp` | Stateless MCP Streamable HTTP endpoint |
-| `GET /healthz` | Health check |
+| --- | --- |
+| `/mcp` | Main remote MCP endpoint |
+| `/healthz` | Health check endpoint |
+| `/legal/privacy` | Public privacy policy page |
+| `/legal/terms` | Public terms of service page |
+| `publicVideo.pagePath` | Public video playback page |
+| `publicVideo.pagePath + /file` | MP4 streaming endpoint |
 
-Every `/mcp` request must include the caller's qURL API key:
+## HTTP Authentication
 
-```http
-Authorization: Bearer lv_live_xxx
+The `/mcp` endpoint requires `Authorization: Bearer <qURL API key>` on every
+request. The bearer token is bound to the resulting MCP session, so a session
+ID cannot be reused with a different credential.
+
+Configure remote MCP clients with:
+
+| Setting | Value |
+| --- | --- |
+| MCP Server URL | Your public HTTPS URL plus `/mcp` |
+| Authentication | Bearer token |
+| Token | The caller's qURL API key |
+
+If a client only supports OAuth discovery, place an OAuth-compatible gateway
+in front of this server rather than exposing `/mcp` without authentication.
+
+## How to Verify Deployment
+
+### Service-Level Checks
+
+Start with:
+
+- `/healthz`
+- `/mcp`
+
+### Public Page Checks
+
+If public pages are enabled, also verify:
+
+- `/legal/privacy`
+- `/legal/terms`
+- the configured public video page path
+
+### Domain Verification
+
+If you plan to use OpenAI Platform, make sure the following root-level path exists:
+
+```text
+/.well-known/openai-apps-challenge
 ```
 
-The server never uses a shared privileged key in HTTP mode. The downstream qURL API validates each caller's key, scopes, expiry, and revocation state. `GET` and `DELETE` requests to `/mcp` return `405`; this server intentionally uses stateless POST requests because it does not emit server-initiated notifications.
-
-For a non-loopback listener, explicitly configure both the bind address and Host-header allowlist:
-
-```bash
-MCP_HOST=0.0.0.0 \
-MCP_ALLOWED_HOSTS=mcp.example.com \
-MCP_TRUST_PROXY_HOPS=1 \
-npm run start:http
-```
-
-`MCP_TRUST_PROXY_HOPS=1` is appropriate for a single trusted reverse proxy such as nginx. Leave it at `0` when clients connect directly. The server refuses a non-loopback bind without `MCP_ALLOWED_HOSTS`.
-
-## Available Tools
-
-| Tool | Description | Required Scope |
-|------|-------------|----------------|
-| `create_qurl` | Create a secure, policy-bound link to a protected resource | `qurl:write` |
-| `resolve_qurl` | Resolve an access token to get the target URL and grant network access | `qurl:resolve` |
-| `list_qurls` | List active qURLs with optional pagination | `qurl:read` |
-| `get_qurl` | Get details of a specific qURL by resource ID | `qurl:read` |
-| `delete_qurl` | Revoke a qURL, immediately invalidating the link | `qurl:write` |
-| `extend_qurl` | Extend the expiration of an active qURL (alias for `update_qurl`) | `qurl:write` |
-| `update_qurl` | Update expiration, tags, or description on an active qURL | `qurl:write` |
-| `mint_link` | Mint a new access link for an existing protected resource | `qurl:write` |
-| `batch_create_qurls` | Create multiple qURLs in a single call | `qurl:write` |
-| `revoke_qurl_token` | Revoke one qURL token without revoking sibling tokens on the resource | `qurl:write` |
-| `update_qurl_token` | Update expiry, label, policy, or session limits on one qURL token | `qurl:write` |
-| `list_qurl_sessions` | List active access sessions for a qURL resource | `qurl:read` |
-| `terminate_qurl_sessions` | Terminate one or all active sessions for a qURL resource | `qurl:write` |
-
-## Available Resources
-
-| URI | Name | Description |
-|-----|------|-------------|
-| `qurl://links` | Active qURL Links | List of all active qURL links |
-| `qurl://usage` | qURL Usage & Quota | Current quota and usage information |
-
-## Configuration
-
-| Environment Variable | Required | Description | Default |
-|---------------------|----------|-------------|---------|
-| `QURL_API_KEY` | Conditional (see description) | API key with appropriate scopes (`qurl:read`, `qurl:write`, `qurl:resolve`). The server boots without it so MCP introspection (`tools/list`, `resources/list`, `prompts/list`) works for directory probes — required only on the first tool call or resource read, where invocations surface a typed `missing_api_key` error until the key is set. | -- |
-| `QURL_API_URL` | No | qURL API base URL | `https://api.layerv.ai` |
-| `MCP_HOST` | HTTP only | HTTP bind address. Non-loopback values require `MCP_ALLOWED_HOSTS`. | `127.0.0.1` |
-| `MCP_PORT` | HTTP only | HTTP listener port. | `3000` |
-| `MCP_ALLOWED_HOSTS` | HTTP only | Comma-separated Host-header allowlist. Required for non-loopback binds. | localhost protection |
-| `MCP_TRUST_PROXY_HOPS` | HTTP only | Number of trusted reverse-proxy hops used to determine the client IP for rate limiting. | `0` |
-| `MCP_RATE_LIMIT_PER_MINUTE` | HTTP only | Per-client `/mcp` request limit. | `120` |
-| `MCP_MAX_JSON_BODY_BYTES` | HTTP only | Maximum authenticated JSON request size, from 1 KiB through 10 MiB. | `1048576` |
+> This verification file must live under the domain root `.well-known` path, not under `/mcp`.
 
 ## Docker
 
-A multi-stage Dockerfile is included for container-based deployment:
+The repository includes a Dockerfile for containerized deployment.
+
+Example:
 
 ```bash
 docker build -t qurl-mcp .
 docker run -i -e QURL_API_KEY=lv_live_xxx qurl-mcp
 ```
 
-Run the HTTP entry point behind one trusted reverse proxy:
+If you deploy with Docker, make sure the container can still access the correct config files, or override the config file paths with environment variables.
 
-```bash
-docker run --rm -p 3000:3000 \
-  -e MCP_HOST=0.0.0.0 \
-  -e MCP_ALLOWED_HOSTS=mcp.example.com \
-  -e MCP_TRUST_PROXY_HOPS=1 \
-  qurl-mcp node dist/http.js
-```
+## Common Commands
 
-The image runs as the non-root `node` user, ships only production dependencies, and uses `tini` as PID 1 for clean signal handling.
+| Command | Purpose |
+| --- | --- |
+| `npm run build` | Compile TypeScript |
+| `npm test` | Run tests |
+| `npm run lint` | Run ESLint |
+| `npm run dev` | TypeScript watch mode |
+| `npm run format` | Format source code |
+| `npm run format:check` | Check formatting |
+| `npm run start` | Start stdio mode |
+| `npm run start:http` | Start HTTP mode |
 
-If a tool call returns `missing_api_key` despite `QURL_API_KEY` looking set, check stderr for the boot-time warning — some MCP hosts hide stderr, and the warning is the fastest way to spot a whitespace-only or unset value:
+## Recommended Deployment Order
 
-```bash
-docker logs <container>          # if running detached
-docker run -i -e QURL_API_KEY=lv_live_xxx qurl-mcp 2>&1  # interactive
-```
+1. Copy and update the two example config files
+2. Set credentials through environment variables
+3. Run `npm install`
+4. Run `npm run build`
+5. Run `npm run start:http`
+6. Verify `/healthz`
+7. Verify unauthenticated `/mcp` requests receive `401`
+8. Configure the HTTPS reverse proxy
+9. Verify an authenticated MCP initialization and the optional public pages
 
-## Development
+## Notes
 
-```bash
-npm install
-npm run build
-npm test
-npm run lint
-```
+For a more polished public release, it is recommended to add:
 
-Additional commands:
-
-```bash
-npm run dev          # Watch mode (rebuild on changes)
-npm run start:http   # Start authenticated Streamable HTTP mode
-npm run format       # Format source with Prettier
-npm run format:check # Check formatting without modifying files
-```
+- a dedicated nginx deployment guide
+- a dedicated domain verification guide
+- a dedicated GPT / OpenAI Platform submission guide
 
 ## License
 
-MIT -- [LayerV AI](https://layerv.ai)
+MIT

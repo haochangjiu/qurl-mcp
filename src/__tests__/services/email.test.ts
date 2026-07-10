@@ -98,6 +98,57 @@ describe("sendEmailMessage", () => {
     expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
   });
 
+  it("rejects header injection in the configured SMTP from name", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+          fromName: "qURL\r\nBcc: attacker@example.com",
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+
+    await expect(
+      sendEmailMessage({ to: ["alice@example.com"], subject: "Hello", text: "World" }),
+    ).rejects.toThrow("SMTP fromName must be a single line");
+    expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
+  });
+
+  it("requires a request-scoped quota principal when server-key fallback is disabled", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+    process.env.QURL_API_KEY = "lv_server_key_must_not_be_used";
+
+    await expect(
+      sendEmailMessage(
+        { to: ["alice@example.com"], subject: "Hello", text: "World" },
+        { allowServerApiKeyFallback: false },
+      ),
+    ).rejects.toThrow("Request-scoped qURL credentials are unavailable");
+    expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
+  });
+
   it("sends one email per unique recipient using shared config-file SMTP settings", async () => {
     const configPath = join(tempDir!, "qurl-mcp.http.json");
     writeFileSync(

@@ -310,6 +310,29 @@ describe("uploadFileDataQurlTool", () => {
       });
     });
 
+    it("never falls back to the server API key in HTTP mode", async () => {
+      process.env.QURL_API_KEY = "lv_server_key_must_not_be_used";
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileDataQurlTool(makeMockClient(), { mode: "http" });
+
+      const result = await tool.handler({
+        file_base64: fixtureBase64,
+        file_name: "sample.pdf",
+        content_type: "application/pdf",
+      });
+
+      expect(result).toEqual({
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining("QURL_API_KEY is not set"),
+          },
+        ],
+      });
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
     it("rejects files that exceed the configured decoded-size limit", async () => {
       process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES = "16b";
       const tool = uploadFileDataQurlTool(makeMockClient());

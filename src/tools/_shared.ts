@@ -6,6 +6,10 @@ import { QURLAPIError } from "../client.js";
 // share this constant so a future spec change fails in one obvious place.
 export const RESOURCE_ID_PATTERN = /^r_[a-z0-9_-]{11}$/;
 
+export type ToolRuntimeOptions = {
+  mode: "stdio" | "http";
+};
+
 /**
  * Tool result shape that handlers return. Kept structural so we don't
  * take a hard dep on the MCP SDK's internal types. `structuredContent`

@@ -7,6 +7,7 @@ import {
   toStructuredContent,
   withMissingApiKeyHandler,
   zodErrorToToolResult,
+  type ToolRuntimeOptions,
 } from "./_shared.js";
 import { mintLinkOutputSchema } from "./output-schemas.js";
 
@@ -58,7 +59,7 @@ export const mintLinkSchema = mintLinkBaseSchema.refine(
   { message: "Provide either expires_in or expires_at, not both" },
 );
 
-export function mintLinkTool(client: IQURLClient) {
+export function mintLinkTool(client: IQURLClient, runtime: ToolRuntimeOptions = { mode: "stdio" }) {
   return {
     name: "mint_link",
     title: "Mint Access Link",
@@ -86,6 +87,7 @@ export function mintLinkTool(client: IQURLClient) {
       const { resource_id, email_delivery, ...body } = parsed.data;
       const result = await client.mintLink(resource_id, body);
       const emailResult = await maybeDeliverToolEmail({
+        allowServerApiKeyFallback: runtime.mode === "stdio",
         delivery: email_delivery,
         defaultSubject: "Your qURL access link is ready",
         detailLines: [

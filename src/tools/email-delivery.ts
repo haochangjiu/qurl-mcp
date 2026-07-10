@@ -26,6 +26,7 @@ export const emailDeliveryInputSchema = z.object({
 export type EmailDeliveryInput = z.infer<typeof emailDeliveryInputSchema>;
 
 export interface ToolEmailInput {
+  allowServerApiKeyFallback: boolean;
   delivery?: EmailDeliveryInput;
   defaultSubject: string;
   detailLines: string[];
@@ -44,11 +45,14 @@ export async function maybeDeliverToolEmail(
   ].filter((section): section is string => typeof section === "string" && section.length > 0);
 
   try {
-    return await sendEmailMessage({
-      to: input.delivery.to,
-      subject,
-      text: sections.join("\n\n"),
-    });
+    return await sendEmailMessage(
+      {
+        to: input.delivery.to,
+        subject,
+        text: sections.join("\n\n"),
+      },
+      { allowServerApiKeyFallback: input.allowServerApiKeyFallback },
+    );
   } catch (error) {
     // Link creation has already succeeded when this helper runs. Never turn a
     // delivery failure into a failed tool call because qurl_link is one-shot

@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, statSync, type Stats } from "node:fs";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -217,7 +217,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   }
 
   function streamPublicVideo(req: express.Request, res: express.Response, filePath: string): void {
-    let stats;
+    let stats: Stats;
     try {
       if (!existsSync(filePath)) {
         res.status(404).send("Configured video file was not found.");

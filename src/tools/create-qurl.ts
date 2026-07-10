@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
-import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
+import {
+  toStructuredContent,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
 import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import { createQurlOutputSchema } from "./output-schemas.js";
 
@@ -77,7 +81,10 @@ export const createQurlSchema = z.object({
     ),
 });
 
-export function createQurlTool(client: IQURLClient) {
+export function createQurlTool(
+  client: IQURLClient,
+  runtime: ToolRuntimeOptions = { mode: "stdio" },
+) {
   return {
     name: "create_qurl",
     title: "Create qURL",
@@ -110,6 +117,7 @@ export function createQurlTool(client: IQURLClient) {
       const { email_delivery, ...createInput } = input;
       const result = await client.createQURL(createInput);
       const emailResult = await maybeDeliverToolEmail({
+        allowServerApiKeyFallback: runtime.mode === "stdio",
         delivery: email_delivery,
         defaultSubject: "Your secure qURL link is ready",
         detailLines: [
@@ -117,7 +125,7 @@ export function createQurlTool(client: IQURLClient) {
           `Target URL: ${createInput.target_url}`,
           `Secure Link: ${result.data.qurl_link}`,
           `Expires At: ${result.data.expires_at}`,
-          `qURL Site: ${result.data.qurl_site}`,
+          ...(result.data.qurl_site ? [`qURL Site: ${result.data.qurl_site}`] : []),
           ...(result.data.label ? [`Label: ${result.data.label}`] : []),
           ...(result.data.type ? [`Type: ${result.data.type}`] : []),
         ],

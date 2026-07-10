@@ -2,7 +2,11 @@ import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { createTextPdfTempFile } from "../services/text-pdf.js";
 import { accessPolicySchema } from "./create-qurl.js";
-import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
+import {
+  toStructuredContent,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
 import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 import { getConnectorConfig } from "./upload-file-shared.js";
@@ -61,7 +65,10 @@ export const uploadTextQurlSchema = z.object({
     ),
 });
 
-export function uploadTextQurlTool(client: IQURLClient) {
+export function uploadTextQurlTool(
+  client: IQURLClient,
+  runtime: ToolRuntimeOptions = { mode: "stdio" },
+) {
   return {
     name: "upload_text_qurl",
     title: "Upload Text qURL",
@@ -85,7 +92,7 @@ export function uploadTextQurlTool(client: IQURLClient) {
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadTextQurlSchema>) => {
       const requestedFileName = input.file_name ?? "content.pdf";
 
-      const connectorConfig = getConnectorConfig();
+      const connectorConfig = getConnectorConfig(runtime.mode === "stdio");
 
       const pdfFile = await createTextPdfTempFile({
         content: input.content,
@@ -111,6 +118,7 @@ export function uploadTextQurlTool(client: IQURLClient) {
         );
 
         const emailResult = await maybeDeliverToolEmail({
+          allowServerApiKeyFallback: runtime.mode === "stdio",
           delivery: input.email_delivery,
           defaultSubject: "Your secure text access link is ready",
           detailLines: [

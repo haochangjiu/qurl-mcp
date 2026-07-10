@@ -47,12 +47,11 @@ type ConnectorErrorBody = {
   message?: string;
 };
 
-export function getConnectorConfig(): ConnectorConfig {
-  const apiKey =
-    getRequestQurlApiKey() ??
-    process.env.QURL_API_KEY?.trim() ??
-    loadRuntimeConfig().qurlApiKey ??
-    "";
+export function getConnectorConfig(allowServerApiKeyFallback = true): ConnectorConfig {
+  const serverApiKey = allowServerApiKeyFallback
+    ? (process.env.QURL_API_KEY?.trim() ?? loadRuntimeConfig().qurlApiKey)
+    : undefined;
+  const apiKey = getRequestQurlApiKey() ?? serverApiKey ?? "";
   if (!apiKey) {
     throw new QURLAPIError(0, "missing_api_key", MISSING_API_KEY_MESSAGE);
   }

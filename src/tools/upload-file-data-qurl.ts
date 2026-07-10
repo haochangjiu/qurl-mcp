@@ -3,7 +3,11 @@ import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
 import { accessPolicySchema } from "./create-qurl.js";
-import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
+import {
+  toStructuredContent,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
 import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import {
   getConnectorConfig,
@@ -153,7 +157,10 @@ function decodeBase64File(input: string, maxBytes: number, contentType: string):
   return fileData;
 }
 
-export function uploadFileDataQurlTool(client: IQURLClient) {
+export function uploadFileDataQurlTool(
+  client: IQURLClient,
+  runtime: ToolRuntimeOptions = { mode: "stdio" },
+) {
   return {
     name: "upload_file_data_qurl",
     title: "Upload File Data qURL",
@@ -179,7 +186,7 @@ export function uploadFileDataQurlTool(client: IQURLClient) {
     },
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadFileDataQurlSchema>) => {
       // Preflight connector config before decoding payloads so auth/config errors fail fast.
-      const connectorConfig = getConnectorConfig();
+      const connectorConfig = getConnectorConfig(runtime.mode === "stdio");
 
       const fileName = normalizeFileName(input.file_name);
       validateFileNameContentType(fileName, input.content_type);
@@ -233,6 +240,7 @@ export function uploadFileDataQurlTool(client: IQURLClient) {
       };
 
       const emailResult = await maybeDeliverToolEmail({
+        allowServerApiKeyFallback: runtime.mode === "stdio",
         delivery: input.email_delivery,
         defaultSubject: "Your secure file access link is ready",
         detailLines: [

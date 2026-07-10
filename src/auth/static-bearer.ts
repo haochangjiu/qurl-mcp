@@ -26,6 +26,11 @@ export function createPassthroughBearerVerifier(): {
         throw new InvalidTokenError("Invalid or expired token.");
       }
 
+      // Deliberately accept any non-empty bearer here so MCP metadata and
+      // initialization remain available before the downstream qURL API has
+      // validated the credential. HTTP session caps, short validation TTLs,
+      // and per-request rate limits bound this pre-validation state; tool
+      // calls remain authorized by the downstream API using this exact key.
       return {
         token: qurlApiKey,
         clientId: PASSTHROUGH_BEARER_CLIENT_ID,

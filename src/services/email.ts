@@ -11,6 +11,10 @@ export interface EmailMessageInput {
   text: string;
 }
 
+export interface EmailMessageOptions {
+  allowServerApiKeyFallback?: boolean;
+}
+
 type EmailQuota = { recipients: number; windowStartedAt: number };
 const emailQuotaByPrincipal = new Map<string, EmailQuota>();
 const EMAIL_QUOTA_WINDOW_MS = 60 * 60 * 1000;
@@ -45,7 +49,10 @@ function uniqueRecipients(recipients: string[]): string[] {
   );
 }
 
-export async function sendEmailMessage(input: EmailMessageInput): Promise<EmailDeliveryResult> {
+export async function sendEmailMessage(
+  input: EmailMessageInput,
+  options: EmailMessageOptions = {},
+): Promise<EmailDeliveryResult> {
   const recipients = uniqueRecipients(input.to);
   if (recipients.length === 0) {
     return {
@@ -110,7 +117,11 @@ export async function sendEmailMessage(input: EmailMessageInput): Promise<EmailD
     };
   }
 
-  const principalKey = getRequestQurlApiKey() ?? runtimeConfig.qurlApiKey ?? "unscoped";
+  const requestApiKey = getRequestQurlApiKey();
+  if (options.allowServerApiKeyFallback === false && !requestApiKey) {
+    throw new Error("Request-scoped qURL credentials are unavailable for email quota tracking.");
+  }
+  const principalKey = requestApiKey ?? runtimeConfig.qurlApiKey ?? "unscoped";
   const principal = await deriveEmailQuotaPrincipal(principalKey);
   const now = Date.now();
   for (const [key, quota] of emailQuotaByPrincipal) {

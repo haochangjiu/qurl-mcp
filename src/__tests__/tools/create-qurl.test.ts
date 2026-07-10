@@ -275,6 +275,33 @@ describe("createQurlTool", () => {
       });
     });
 
+    it("uses request-scoped email quota credentials in HTTP mode and omits an absent site", async () => {
+      const mockCreate = vi.fn().mockResolvedValue({
+        data: sampleCreateQURLData({ qurl_site: undefined }),
+      });
+      vi.mocked(sendEmailMessage).mockResolvedValue({
+        attempted: true,
+        enabled: true,
+        recipients: ["alice@example.com"],
+        sent: 1,
+        failed: 0,
+        results: [{ email: "alice@example.com", success: true, message_id: "msg-1" }],
+      });
+      const tool = createQurlTool(makeMockClient({ createQURL: mockCreate }), { mode: "http" });
+
+      await tool.handler({
+        target_url: "https://example.com/protected",
+        email_delivery: { to: ["alice@example.com"] },
+      });
+
+      expect(vi.mocked(sendEmailMessage)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.not.stringContaining("qURL Site: undefined"),
+        }),
+        { allowServerApiKeyFallback: false },
+      );
+    });
+
     it("skips email cleanly when SMTP is not configured", async () => {
       const mockCreate = vi.fn().mockResolvedValue({ data: fixture });
       vi.mocked(sendEmailMessage).mockResolvedValue({

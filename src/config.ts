@@ -293,6 +293,9 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
   if (!isEmailAddress(fromEmail)) {
     throw new Error("SMTP fromEmail must be a valid email address.");
   }
+  if (fromName && /[\r\n]/.test(fromName)) {
+    throw new Error("SMTP fromName must be a single line.");
+  }
   const allowedRecipients = parseCsvList(
     process.env.QURL_SMTP_ALLOWED_RECIPIENTS ?? fileConfig?.allowedRecipients,
   );

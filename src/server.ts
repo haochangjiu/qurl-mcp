@@ -17,7 +17,7 @@ import { terminateQurlSessionsTool } from "./tools/terminate-qurl-sessions.js";
 import { uploadFileDataQurlTool } from "./tools/upload-file-data-qurl.js";
 import { uploadFileQurlTool } from "./tools/upload-file-qurl.js";
 import { uploadTextQurlTool } from "./tools/upload-text-qurl.js";
-import type { ToolAnnotations } from "./tools/_shared.js";
+import type { ToolAnnotations, ToolRuntimeOptions } from "./tools/_shared.js";
 import { linksResource } from "./resources/links.js";
 import { usageResource } from "./resources/usage.js";
 import { secureAServicePrompt } from "./prompts/secure-a-service.js";
@@ -29,7 +29,10 @@ import { rotateAccessPrompt } from "./prompts/rotate-access.js";
  * TDQS-coverage test can iterate the same canonical list without
  * redeclaring the type.
  */
-export type ToolFactory = (client: IQURLClient) => {
+export type ToolFactory = (
+  client: IQURLClient,
+  runtime?: ToolRuntimeOptions,
+) => {
   name: string;
   title: string;
   description: string;
@@ -92,7 +95,7 @@ export function createServer(
   });
 
   for (const factory of getToolFactoriesForMode(mode)) {
-    const tool = factory(client);
+    const tool = factory(client, { mode });
     // registerTool wires outputSchema + annotations into tools/list; pass
     // .shape (ZodRawShape), not the ZodObject itself.
     server.registerTool(

@@ -150,6 +150,13 @@ Their responsibilities are:
 Set `QURL_API_KEY` in the environment for `stdio` mode. In HTTP mode, every
 client request supplies its own qURL API key as a bearer token.
 
+For compatibility with private/internal qURL API deployments,
+`defaultQurlApiUrl` and `QURL_API_URL` may use HTTP. Doing so for a non-loopback
+host logs a startup warning because API keys and qURL data are sent without
+transport encryption; use HTTPS whenever the traffic is not already protected
+by a trusted private transport. Upload connector URLs remain HTTPS-only except
+for loopback development endpoints.
+
 ### SMTP Settings
 
 | Field | Purpose |
@@ -178,6 +185,9 @@ match is delivered. If both are empty, the message and hourly caps still apply.
 The SMTP transport uses bounded connection/socket timeouts and is closed after
 each delivery batch. Failed SMTP attempts still consume quota so repeated
 failures cannot bypass the abuse limit.
+Hourly quota state is maintained per server process: it resets on restart and
+is not shared across replicas. Operators running multiple instances should
+enforce a corresponding aggregate limit at the SMTP provider or gateway.
 
 Prefer environment variables for SMTP credentials and policy:
 `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, `QURL_SMTP_FROM_EMAIL`,

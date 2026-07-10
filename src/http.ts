@@ -23,7 +23,7 @@ import {
   createPassthroughBearerVerifier,
   createQurlClientFromBearerToken,
 } from "./auth/static-bearer.js";
-import { getDefaultConfigPath, inspectSmtpConfig } from "./config.js";
+import { getDefaultConfigPath, inspectSmtpConfig, isInsecureNonLoopbackHttpUrl } from "./config.js";
 import { getDefaultHttpConfigPath, loadHttpServerConfig } from "./http-config.js";
 import { getLegalDocuments, renderLegalDocumentHtml } from "./services/legal-pages.js";
 import { getPublicVideoFileRoute, renderPublicVideoPageHtml } from "./services/video-page.js";
@@ -591,6 +591,11 @@ export function startHttpServer(): Server {
   const httpServer = app.listen(port, host, () => {
     logInfo(`qURL MCP HTTP server listening on ${sanitizeLogValue(host)}:${port}`);
     logInfo("HTTP MCP auth mode: bearer token (qURL API key passthrough)");
+    if (isInsecureNonLoopbackHttpUrl(defaultQurlApiUrl)) {
+      console.error(
+        "Warning: QURL_API_URL uses plaintext HTTP for a non-loopback host; bearer credentials and qURL API data will be sent without transport encryption.",
+      );
+    }
     logInfo("HTTP and runtime config loaded.");
     logInfo(`Public legal pages enabled: ${getLegalDocuments().length}`);
     if (config.publicVideo) logInfo("Public video page enabled.");

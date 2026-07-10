@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync } from "node:crypto";
+import { randomBytes, scrypt } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getRequestQurlApiKey } from "../auth/request-context.js";
 import { loadRuntimeConfig } from "../config.js";
@@ -17,6 +17,18 @@ const EMAIL_QUOTA_SALT = randomBytes(16);
 
 export function clearEmailQuotaState(): void {
   emailQuotaByPrincipal.clear();
+}
+
+async function deriveEmailQuotaPrincipal(principalKey: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    scrypt(principalKey, EMAIL_QUOTA_SALT, 32, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(derivedKey.toString("hex"));
+    });
+  });
 }
 
 function uniqueRecipients(recipients: string[]): string[] {
@@ -95,7 +107,7 @@ export async function sendEmailMessage(input: EmailMessageInput): Promise<EmailD
   }
 
   const principalKey = getRequestQurlApiKey() ?? runtimeConfig.qurlApiKey ?? "unscoped";
-  const principal = scryptSync(principalKey, EMAIL_QUOTA_SALT, 32).toString("hex");
+  const principal = await deriveEmailQuotaPrincipal(principalKey);
   const now = Date.now();
   for (const [key, quota] of emailQuotaByPrincipal) {
     if (now - quota.windowStartedAt >= EMAIL_QUOTA_WINDOW_MS) emailQuotaByPrincipal.delete(key);

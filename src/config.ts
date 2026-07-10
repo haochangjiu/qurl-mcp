@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { resolve } from "node:path";
 
 export interface SmtpConfig {
@@ -184,18 +185,38 @@ function trimString(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
-function normalizeServiceBaseUrl(value: string, fieldName: string): string {
+export function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[(.*)\]$/, "$1");
+  if (normalized === "localhost" || normalized === "::1") return true;
+  return isIP(normalized) === 4 && Number(normalized.split(".", 1)[0]) === 127;
+}
+
+export function isInsecureNonLoopbackHttpUrl(value: string): boolean {
+  const url = new URL(value);
+  return url.protocol === "http:" && !isLoopbackHostname(url.hostname);
+}
+
+function normalizeServiceBaseUrl(value: string, fieldName: string, requireHttps: boolean): string {
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     throw new Error(`${fieldName} must be a valid absolute URL.`);
   }
-  const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.username || url.password || url.search || url.hash) {
     throw new Error(`${fieldName} must not contain credentials, a query, or a fragment.`);
   }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback)) {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`${fieldName} must use HTTP or HTTPS.`);
+  }
+  if (
+    requireHttps &&
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && isLoopbackHostname(url.hostname))
+  ) {
     throw new Error(`${fieldName} must use HTTPS except for loopback development endpoints.`);
   }
   return url.toString().replace(/\/$/, "");
@@ -356,11 +377,12 @@ export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeC
   const defaultQurlApiUrl = normalizeServiceBaseUrl(
     process.env.QURL_API_URL?.trim() || fileConfig.defaultQurlApiUrl || "https://api.layerv.ai",
     "QURL_API_URL/defaultQurlApiUrl",
+    false,
   );
   const connectorUrlValue =
     process.env.QURL_CONNECTOR_URL?.trim() || fileConfig.defaultQurlConnectorUrl;
   const defaultQurlConnectorUrl = connectorUrlValue
-    ? normalizeServiceBaseUrl(connectorUrlValue, "QURL_CONNECTOR_URL/defaultQurlConnectorUrl")
+    ? normalizeServiceBaseUrl(connectorUrlValue, "QURL_CONNECTOR_URL/defaultQurlConnectorUrl", true)
     : undefined;
 
   const config: RuntimeConfig = {

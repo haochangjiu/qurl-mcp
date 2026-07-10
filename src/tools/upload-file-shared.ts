@@ -8,6 +8,7 @@ import {
 import { MISSING_API_KEY_MESSAGE, QURLAPIError } from "../client.js";
 import {
   DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
+  isLoopbackHostname,
   loadRuntimeConfig,
   parseSizeBytes,
 } from "../config.js";
@@ -67,10 +68,6 @@ export function getConnectorConfig() {
     apiKey,
     connectorURL: connectorURL.replace(/\/$/, ""),
   };
-}
-
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
 export function getConnectorUploadUrl(connectorURL: string): string {

@@ -59,6 +59,78 @@ export const uploadFileQurlSchema = z.object({
   access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
 });
 
+export type UploadFileQurlInput = z.infer<typeof uploadFileQurlSchema>;
+
+export async function uploadLocalFileAndMint(client: IQURLClient, input: UploadFileQurlInput) {
+  // Preflight config before reading local files so misconfigured hosts fail fast.
+  getConnectorConfig();
+
+  const sourcePath = resolve(input.file_path);
+  const fileName = normalizeFileName(input.file_name ?? sourcePath);
+  const contentType = input.content_type ?? inferContentType(fileName);
+  if (!contentType) {
+    throw new Error(
+      "Unsupported file type. Provide a PDF, PNG, JPEG, WEBP, or GIF file, or set content_type explicitly.",
+    );
+  }
+
+  validateFileNameContentType(fileName, contentType);
+
+  const maxBytes = getMaxUploadFileBytes();
+  const fileHandle = await open(sourcePath, "r");
+  let fileData: Uint8Array;
+  try {
+    const sourceStat = await fileHandle.stat();
+    if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
+    if (sourceStat.size > maxBytes) {
+      throw new Error("File exceeds the configured upload size limit.");
+    }
+    fileData = await fileHandle.readFile();
+  } finally {
+    await fileHandle.close();
+  }
+  if (fileData.byteLength > maxBytes) {
+    throw new Error("File exceeds the configured upload size limit.");
+  }
+  validateFileSignature(fileData, contentType);
+  const upload = await uploadToConnector(fileData, fileName, contentType);
+
+  const mintInput = {
+    label: input.label,
+    expires_in: input.expires_in,
+    one_time_use: input.one_time_use ?? true,
+    max_sessions: input.max_sessions,
+    session_duration: input.session_duration,
+    access_policy: input.access_policy,
+  };
+  const minted = await client.mintLink(upload.resource_id, mintInput);
+
+  let qurlSite: string | undefined;
+  try {
+    qurlSite = (await client.getQURL(upload.resource_id)).data.qurl_site;
+  } catch (err) {
+    // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
+    console.error(
+      `Failed to fetch qurl_site for resource ${upload.resource_id}:`,
+      err instanceof Error ? err.message : err,
+    );
+    qurlSite = undefined;
+  }
+
+  return {
+    resource_id: upload.resource_id,
+    qurl_id: minted.data.qurl_id,
+    qurl_link: minted.data.qurl_link,
+    qurl_site: qurlSite,
+    expires_at: minted.data.expires_at,
+    file_name: fileName,
+    content_type: contentType,
+    size_bytes: fileData.byteLength,
+    branded_domain: minted.data.branded_domain,
+    type: minted.data.type,
+  };
+}
+
 export function uploadFileQurlTool(client: IQURLClient) {
   return {
     name: "upload_file_qurl",
@@ -81,74 +153,8 @@ export function uploadFileQurlTool(client: IQURLClient) {
       idempotentHint: false,
       openWorldHint: true,
     },
-    handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadFileQurlSchema>) => {
-      // Preflight config before reading local files so misconfigured hosts fail fast.
-      getConnectorConfig();
-
-      const sourcePath = resolve(input.file_path);
-      const fileName = normalizeFileName(input.file_name ?? sourcePath);
-      const contentType = input.content_type ?? inferContentType(fileName);
-      if (!contentType) {
-        throw new Error(
-          "Unsupported file type. Provide a PDF, PNG, JPEG, WEBP, or GIF file, or set content_type explicitly.",
-        );
-      }
-
-      validateFileNameContentType(fileName, contentType);
-
-      const maxBytes = getMaxUploadFileBytes();
-      const fileHandle = await open(sourcePath, "r");
-      let fileData: Uint8Array;
-      try {
-        const sourceStat = await fileHandle.stat();
-        if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
-        if (sourceStat.size > maxBytes) {
-          throw new Error("File exceeds the configured upload size limit.");
-        }
-        fileData = await fileHandle.readFile();
-      } finally {
-        await fileHandle.close();
-      }
-      if (fileData.byteLength > maxBytes) {
-        throw new Error("File exceeds the configured upload size limit.");
-      }
-      validateFileSignature(fileData, contentType);
-      const upload = await uploadToConnector(fileData, fileName, contentType);
-
-      const mintInput = {
-        label: input.label,
-        expires_in: input.expires_in,
-        one_time_use: input.one_time_use ?? true,
-        max_sessions: input.max_sessions,
-        session_duration: input.session_duration,
-        access_policy: input.access_policy,
-      };
-      const minted = await client.mintLink(upload.resource_id, mintInput);
-
-      let qurlSite: string | undefined;
-      try {
-        qurlSite = (await client.getQURL(upload.resource_id)).data.qurl_site;
-      } catch (err) {
-        // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
-        console.error(
-          `Failed to fetch qurl_site for resource ${upload.resource_id}:`,
-          err instanceof Error ? err.message : err,
-        );
-        qurlSite = undefined;
-      }
-
-      const result = {
-        resource_id: upload.resource_id,
-        qurl_id: minted.data.qurl_id,
-        qurl_link: minted.data.qurl_link,
-        qurl_site: qurlSite,
-        expires_at: minted.data.expires_at,
-        file_name: fileName,
-        content_type: contentType,
-        size_bytes: fileData.byteLength,
-        branded_domain: minted.data.branded_domain,
-        type: minted.data.type,
-      };
+    handler: withMissingApiKeyHandler(async (input: UploadFileQurlInput) => {
+      const result = await uploadLocalFileAndMint(client, input);
 
       return {
         content: [

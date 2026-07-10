@@ -4,7 +4,12 @@ import { createRequire } from "node:module";
 import { installTimestampedConsole, logInfo } from "./logging.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { MISSING_API_KEY_MESSAGE, QURLClient } from "./client.js";
-import { getDefaultConfigPath, inspectSmtpConfig, loadRuntimeConfig } from "./config.js";
+import {
+  getDefaultConfigPath,
+  inspectSmtpConfig,
+  isInsecureNonLoopbackHttpUrl,
+  loadRuntimeConfig,
+} from "./config.js";
 import { createServer } from "./server.js";
 
 installTimestampedConsole();
@@ -28,6 +33,11 @@ if (!apiKey) {
   console.error(`Warning: ${MISSING_API_KEY_MESSAGE}`);
 }
 const baseURL = runtimeConfig.defaultQurlApiUrl;
+if (isInsecureNonLoopbackHttpUrl(baseURL)) {
+  console.error(
+    "Warning: QURL_API_URL uses plaintext HTTP for a non-loopback host; qURL API credentials and data will be sent without transport encryption.",
+  );
+}
 const smtpInspection = inspectSmtpConfig(runtimeConfigPath);
 logInfo("Runtime config loaded.");
 if (smtpInspection.enabled) {

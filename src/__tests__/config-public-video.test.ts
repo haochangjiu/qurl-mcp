@@ -171,13 +171,21 @@ describe("public video config", () => {
     expect(config.qurlApiKey).toBe("env-key");
   });
 
-  it("bounds upload memory and rejects unsafe service URLs", () => {
+  it("bounds upload memory and validates service URLs without breaking internal HTTP APIs", () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(configPath, JSON.stringify({ maxUploadFileDataBytes: "101mb" }));
     expect(() => loadRuntimeConfig(configPath)).toThrow("must not exceed 100mb");
 
     writeFileSync(configPath, JSON.stringify({ defaultQurlApiUrl: "http://api.example.com" }));
+    expect(loadRuntimeConfig(configPath).defaultQurlApiUrl).toBe("http://api.example.com");
+    clearRuntimeConfigCache();
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({ defaultQurlConnectorUrl: "http://connector.example.com" }),
+    );
     expect(() => loadRuntimeConfig(configPath)).toThrow("must use HTTPS");
+    clearRuntimeConfigCache();
 
     writeFileSync(
       configPath,

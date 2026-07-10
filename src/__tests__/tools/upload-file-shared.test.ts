@@ -10,6 +10,12 @@ describe("getConnectorUploadUrl", () => {
 
   it("allows HTTP only for loopback development endpoints", () => {
     expect(getConnectorUploadUrl("http://127.0.0.1:8080")).toBe("http://127.0.0.1:8080/api/upload");
+    expect(getConnectorUploadUrl("http://127.42.0.7:8080")).toBe(
+      "http://127.42.0.7:8080/api/upload",
+    );
+    expect(getConnectorUploadUrl("http://2130706433:8080")).toBe(
+      "http://127.0.0.1:8080/api/upload",
+    );
     expect(() => getConnectorUploadUrl("http://connector.example.com")).toThrow("must use HTTPS");
   });
 

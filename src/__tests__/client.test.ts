@@ -45,7 +45,7 @@ vi.mock("@layervai/qurl", async (importOriginal) => {
 
 import { QURLClient, QURLAPIError, MISSING_API_KEY_MESSAGE } from "../client.js";
 import { runWithRequestAuthContext } from "../auth/request-context.js";
-import { NotFoundError, AuthorizationError, NetworkError } from "@layervai/qurl";
+import { NotFoundError, AuthorizationError, NetworkError, RateLimitError } from "@layervai/qurl";
 
 const newClient = (apiKey = "lv_live_key", baseURL = "https://api.test.layerv.ai") =>
   new QURLClient({ apiKey, baseURL });
@@ -348,6 +348,28 @@ describe("QURLClient adapter", () => {
       );
 
       expect(credentialValidated).toBe(false);
+    });
+
+    it("marks the request credential validated on a downstream 429", async () => {
+      sdk.get.mockRejectedValue(
+        new RateLimitError({
+          status: 429,
+          code: "rate_limited",
+          title: "Too Many Requests",
+          detail: "quota exceeded",
+        }),
+      );
+      let credentialValidated = false;
+
+      await runWithRequestAuthContext(
+        { markCredentialValidated: () => (credentialValidated = true) },
+        () =>
+          newClient()
+            .getQURL("r_x")
+            .catch(() => undefined),
+      );
+
+      expect(credentialValidated).toBe(true);
     });
 
     it("translates a transport-level SDK error (NetworkError) to QURLAPIError", async () => {

@@ -74,17 +74,23 @@ export const uploadFileDataQurlSchema = z.object({
  * - URL-safe base64 (uses - and _ instead of + and /)
  *
  * @param input - Raw base64 string or data URL
- * @returns Normalized standard base64 string with proper padding
+ * @returns Normalized standard base64 and the data URL media type, when present
  * @throws Error if input is empty or contains invalid base64 characters
  */
-function normalizeBase64Input(input: string): string {
+function normalizeBase64Input(input: string): {
+  base64: string;
+  dataUrlContentType?: string;
+} {
   const trimmed = input.trim();
   if (!trimmed) {
     throw new Error("file_base64 must not be empty");
   }
 
-  // Step 1: Strip data URL prefix if present (e.g., "data:image/png;base64,")
-  const withoutDataUrl = trimmed.replace(/^data:[^;,]+;base64,/i, "");
+  // Step 1: Parse and strip the data URL prefix if present (e.g.,
+  // "data:image/png;base64,"). Return its media type so callers do not need
+  // to parse the same prefix again.
+  const dataUrl = /^data:([^;,]+);base64,/i.exec(trimmed);
+  const withoutDataUrl = dataUrl ? trimmed.slice(dataUrl[0].length) : trimmed;
 
   // Step 2: Remove whitespace (base64 from copy-paste often has line breaks)
   const withoutWhitespace = withoutDataUrl.replace(/\s+/g, "");
@@ -111,20 +117,22 @@ function normalizeBase64Input(input: string): string {
 
   // Already properly padded
   if (paddingNeeded === 0) {
-    return normalized;
+    return { base64: normalized, dataUrlContentType: dataUrl?.[1].toLowerCase() };
   }
 
   // Add missing padding (mod 4 = 2 needs "==", mod 4 = 3 needs "=")
-  return normalized.padEnd(normalized.length + (4 - paddingNeeded), "=");
+  return {
+    base64: normalized.padEnd(normalized.length + (4 - paddingNeeded), "="),
+    dataUrlContentType: dataUrl?.[1].toLowerCase(),
+  };
 }
 
 function decodeBase64File(input: string, maxBytes: number, contentType: string): Uint8Array {
-  const dataUrl = /^data:([^;,]+);base64,/i.exec(input.trim());
-  if (dataUrl && dataUrl[1].toLowerCase() !== contentType) {
+  const normalized = normalizeBase64Input(input);
+  if (normalized.dataUrlContentType && normalized.dataUrlContentType !== contentType) {
     throw new Error("Data URL media type does not match content_type.");
   }
-  const normalized = normalizeBase64Input(input);
-  const fileData = Buffer.from(normalized, "base64");
+  const fileData = Buffer.from(normalized.base64, "base64");
 
   if (fileData.byteLength === 0) {
     throw new Error("file_base64 decoded to an empty file");

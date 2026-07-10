@@ -6,7 +6,7 @@ import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
 import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 import { getConnectorConfig } from "./upload-file-shared.js";
-import { uploadFileQurlTool } from "./upload-file-qurl.js";
+import { uploadLocalFileAndMint } from "./upload-file-qurl.js";
 
 const supportedTextPayloadTypes = ["text", "markdown", "html", "json"] as const;
 
@@ -62,8 +62,6 @@ export const uploadTextQurlSchema = z.object({
 });
 
 export function uploadTextQurlTool(client: IQURLClient) {
-  const uploadFileTool = uploadFileQurlTool(client);
-
   return {
     name: "upload_text_qurl",
     title: "Upload Text qURL",
@@ -96,7 +94,7 @@ export function uploadTextQurlTool(client: IQURLClient) {
       });
 
       try {
-        const uploadResult = await uploadFileTool.handler({
+        const result = await uploadLocalFileAndMint(client, {
           file_path: pdfFile.filePath,
           file_name: pdfFile.fileName,
           content_type: "application/pdf",
@@ -107,15 +105,6 @@ export function uploadTextQurlTool(client: IQURLClient) {
           session_duration: input.session_duration,
           access_policy: input.access_policy,
         });
-
-        if (uploadResult.isError) {
-          return uploadResult;
-        }
-
-        if (!uploadResult.structuredContent) {
-          throw new Error("File upload completed without structured result data.");
-        }
-        const result = { ...uploadResult.structuredContent };
 
         const emailResult = await maybeDeliverToolEmail({
           delivery: input.email_delivery,

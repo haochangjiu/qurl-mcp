@@ -180,6 +180,59 @@ describe("HTTP MCP server", () => {
     expect(response.status).toBe(404);
   });
 
+  it("expires an unvalidated session even while its SSE request is active", async () => {
+    const baseUrl = await start();
+    const token = "lv_live_pending_sse";
+    const sessionId = await initialize(baseUrl, token);
+
+    const initialized = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
+    });
+    expect(initialized.status).toBe(202);
+
+    const controller = new globalThis.AbortController();
+    const sse = await fetch(`${baseUrl}/mcp`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "text/event-stream",
+        "mcp-session-id": sessionId,
+      },
+      signal: controller.signal,
+    });
+    expect(sse.status).toBe(200);
+
+    expect(await sweepExpiredSessions(Date.now() + 24 * 60 * 60 * 1000)).toBe(1);
+    expect(getActiveSessionCount()).toBe(0);
+    controller.abort();
+  });
+
+  it("never exceeds the configured session cap during concurrent initialization", async () => {
+    const cappedRuntime = createHttpRuntime(
+      { ...testConfig, maxSessions: 1, maxUnvalidatedSessions: 1 },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(cappedRuntime.app);
+
+    try {
+      const responses = await Promise.all(
+        ["lv_live_race_a", "lv_live_race_b"].map((token) =>
+          fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: bearerHeaders(token),
+            body: JSON.stringify(initializeBody),
+          }),
+        ),
+      );
+
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 503]);
+      expect(cappedRuntime.getActiveSessionCount()).toBe(1);
+    } finally {
+      await cappedRuntime.closeAllSessions();
+    }
+  });
+
   it("removes sessions on explicit DELETE", async () => {
     const baseUrl = await start();
     const sessionId = await initialize(baseUrl, "lv_live_delete");

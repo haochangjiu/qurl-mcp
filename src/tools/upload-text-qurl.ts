@@ -85,7 +85,7 @@ export function uploadTextQurlTool(client: IQURLClient) {
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadTextQurlSchema>) => {
       const requestedFileName = input.file_name ?? "content.pdf";
 
-      getConnectorConfig();
+      const connectorConfig = getConnectorConfig();
 
       const pdfFile = await createTextPdfTempFile({
         content: input.content,
@@ -94,17 +94,21 @@ export function uploadTextQurlTool(client: IQURLClient) {
       });
 
       try {
-        const result = await uploadLocalFileAndMint(client, {
-          file_path: pdfFile.filePath,
-          file_name: pdfFile.fileName,
-          content_type: "application/pdf",
-          label: input.label,
-          expires_in: input.expires_in,
-          one_time_use: input.one_time_use,
-          max_sessions: input.max_sessions,
-          session_duration: input.session_duration,
-          access_policy: input.access_policy,
-        });
+        const result = await uploadLocalFileAndMint(
+          client,
+          {
+            file_path: pdfFile.filePath,
+            file_name: pdfFile.fileName,
+            content_type: "application/pdf",
+            label: input.label,
+            expires_in: input.expires_in,
+            one_time_use: input.one_time_use,
+            max_sessions: input.max_sessions,
+            session_duration: input.session_duration,
+            access_policy: input.access_policy,
+          },
+          connectorConfig,
+        );
 
         const emailResult = await maybeDeliverToolEmail({
           delivery: input.email_delivery,

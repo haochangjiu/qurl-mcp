@@ -220,7 +220,7 @@ When configured, the HTTP server additionally exposes:
 | `maxSessions` | Hard cap on live MCP sessions (default `1000`) |
 | `maxUnvalidatedSessions` | Cap on sessions that have not completed a downstream qURL API call (default `100`) |
 | `sessionIdleTtlMs` | Idle session eviction window (default 15 minutes) |
-| `unvalidatedSessionTtlMs` | Short idle window for never-validated bearer sessions (default 1 minute) |
+| `unvalidatedSessionTtlMs` | Absolute validation deadline for never-validated bearer sessions (default 1 minute) |
 | `mcpRateLimitPerMinute` | Per-client `/mcp` request limit (default `120`) |
 | `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`) |
 
@@ -230,9 +230,9 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 `0` for direct connections so forwarded IP headers cannot spoof rate-limit keys.
 Bearer credentials are conclusively validated by the first downstream qURL API
 call. Until then, sessions use the smaller pending-session cap and one-minute
-idle window, so arbitrary non-empty bearer strings cannot occupy the full
+validation deadline, so arbitrary non-empty bearer strings cannot occupy the full
 session pool for the normal 15-minute TTL. A client that performs only MCP
-introspection remains pending by design; after an idle-window eviction it must
+introspection remains pending by design; after deadline eviction it must
 re-initialize before its next request. Both pending-session limits are
 configurable for clients with longer introspection-to-tool-call gaps.
 

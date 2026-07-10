@@ -13,6 +13,7 @@ import {
   uploadToConnector,
   validateFileNameContentType,
   validateFileSignature,
+  type ConnectorConfig,
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 
@@ -61,10 +62,12 @@ export const uploadFileQurlSchema = z.object({
 
 export type UploadFileQurlInput = z.infer<typeof uploadFileQurlSchema>;
 
-export async function uploadLocalFileAndMint(client: IQURLClient, input: UploadFileQurlInput) {
+export async function uploadLocalFileAndMint(
+  client: IQURLClient,
+  input: UploadFileQurlInput,
+  connectorConfig: ConnectorConfig = getConnectorConfig(),
+) {
   // Preflight config before reading local files so misconfigured hosts fail fast.
-  getConnectorConfig();
-
   const sourcePath = resolve(input.file_path);
   const fileName = normalizeFileName(input.file_name ?? sourcePath);
   const contentType = input.content_type ?? inferContentType(fileName);
@@ -93,7 +96,7 @@ export async function uploadLocalFileAndMint(client: IQURLClient, input: UploadF
     throw new Error("File exceeds the configured upload size limit.");
   }
   validateFileSignature(fileData, contentType);
-  const upload = await uploadToConnector(fileData, fileName, contentType);
+  const upload = await uploadToConnector(fileData, fileName, contentType, connectorConfig);
 
   const mintInput = {
     label: input.label,

@@ -34,6 +34,11 @@ type ConnectorUploadResponse = {
   resource_id: string;
 };
 
+export type ConnectorConfig = {
+  apiKey: string;
+  connectorURL: string;
+};
+
 type ConnectorErrorBody = {
   error?: { code?: string; detail?: string; message?: string; type?: string; instance?: string };
   code?: string;
@@ -41,7 +46,7 @@ type ConnectorErrorBody = {
   message?: string;
 };
 
-export function getConnectorConfig() {
+export function getConnectorConfig(): ConnectorConfig {
   const apiKey =
     getRequestQurlApiKey() ??
     process.env.QURL_API_KEY?.trim() ??
@@ -347,8 +352,9 @@ export async function uploadToConnector(
   fileData: Uint8Array,
   fileName: string,
   contentType: string,
+  connectorConfig: ConnectorConfig,
 ): Promise<ConnectorUploadResponse> {
-  const { apiKey, connectorURL } = getConnectorConfig();
+  const { apiKey, connectorURL } = connectorConfig;
   const uploadUrl = getConnectorUploadUrl(connectorURL);
   const form = new globalThis.FormData();
   form.append(

@@ -38,6 +38,7 @@ type SessionContext = {
   transport: StreamableHTTPServerTransport;
   server: ReturnType<typeof createServer>;
   bearerTokenDigest: Buffer;
+  createdAt: number;
   lastActivityAt: number;
   activeRequests: number;
   credentialValidated: boolean;
@@ -103,6 +104,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   });
 
   const sessions = new Map<string, SessionContext>();
+  let pendingInitializations = 0;
 
   async function closeSession(sessionId: string): Promise<void> {
     const session = sessions.get(sessionId);
@@ -118,10 +120,15 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   async function sweepExpiredSessions(now = Date.now()): Promise<number> {
     const expiredIds = [...sessions.values()]
       .filter((session) => {
-        const ttlMs = session.credentialValidated
-          ? config.sessionIdleTtlMs
-          : config.unvalidatedSessionTtlMs;
-        return session.activeRequests === 0 && now - session.lastActivityAt >= ttlMs;
+        if (!session.credentialValidated) {
+          // The pending-session window is an absolute validation deadline.
+          // Close even an active SSE stream so it cannot hold an unvalidated
+          // slot indefinitely.
+          return now - session.createdAt >= config.unvalidatedSessionTtlMs;
+        }
+        return (
+          session.activeRequests === 0 && now - session.lastActivityAt >= config.sessionIdleTtlMs
+        );
       })
       .map((session) => session.sessionId);
     await Promise.all(expiredIds.map((sessionId) => closeSession(sessionId)));
@@ -329,14 +336,14 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     try {
       if (isInitializeRequest(req.body)) {
         await sweepExpiredSessions();
-        if (sessions.size >= config.maxSessions) {
+        if (sessions.size + pendingInitializations >= config.maxSessions) {
           rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
           return;
         }
         const unvalidatedSessionCount = [...sessions.values()].filter(
           (session) => !session.credentialValidated,
         ).length;
-        if (unvalidatedSessionCount >= config.maxUnvalidatedSessions) {
+        if (unvalidatedSessionCount + pendingInitializations >= config.maxUnvalidatedSessions) {
           rejectJsonRpc(
             res,
             503,
@@ -345,63 +352,74 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           return;
         }
 
-        // Initialization always creates a fresh session. Discard any supplied
-        // session header before handing the request to the MCP transport so a
-        // caller cannot use header presence to select a privileged code path.
-        delete req.headers["mcp-session-id"];
-
-        const server = createServer(
-          createQurlClientFromBearerToken(bearerToken, { qurlApiUrl: defaultQurlApiUrl }),
-          version,
-          "http",
-        );
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-        });
-
-        transport.onclose = () => {
-          // Some clients/proxies reconnect the GET SSE stream with the same
-          // session ID. Deleting the in-memory session record here can cause
-          // a subsequent GET /mcp to be rejected as "unknown session" even
-          // though the client is attempting a valid reconnect. Explicit DELETE
-          // requests still remove sessions from the registry. The idle TTL
-          // bounds how long a disconnected session remains available.
-          const currentSessionId = transport.sessionId;
-          const currentSession = currentSessionId ? sessions.get(currentSessionId) : undefined;
-          if (currentSession) currentSession.lastActivityAt = Date.now();
-        };
+        // Reserve both a live-session slot and an unvalidated-session slot
+        // before the first initialization await. This keeps concurrent
+        // initialize requests from overshooting either configured cap.
+        pendingInitializations += 1;
 
         try {
-          await server.connect(transport);
-          await withRequestAuth(undefined, bearerToken, () =>
-            transport.handleRequest(req, res, req.body),
+          // Initialization always creates a fresh session. Discard any supplied
+          // session header before handing the request to the MCP transport so a
+          // caller cannot use header presence to select a privileged code path.
+          delete req.headers["mcp-session-id"];
+
+          const server = createServer(
+            createQurlClientFromBearerToken(bearerToken, { qurlApiUrl: defaultQurlApiUrl }),
+            version,
+            "http",
           );
-        } catch (error) {
-          await server.close().catch((closeError: unknown) => {
-            console.error(
-              `[mcp-http] initialize cleanup failed (${formatErrorForLog(closeError)})`,
-            );
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
           });
-          throw error;
-        }
 
-        if (!transport.sessionId) {
-          console.warn("[mcp-http] initialize completed without session id");
-          await server.close();
+          transport.onclose = () => {
+            // Some clients/proxies reconnect the GET SSE stream with the same
+            // session ID. Deleting the in-memory session record here can cause
+            // a subsequent GET /mcp to be rejected as "unknown session" even
+            // though the client is attempting a valid reconnect. Explicit DELETE
+            // requests still remove sessions from the registry. The idle TTL
+            // bounds how long a disconnected session remains available.
+            const currentSessionId = transport.sessionId;
+            const currentSession = currentSessionId ? sessions.get(currentSessionId) : undefined;
+            if (currentSession) currentSession.lastActivityAt = Date.now();
+          };
+
+          try {
+            await server.connect(transport);
+            await withRequestAuth(undefined, bearerToken, () =>
+              transport.handleRequest(req, res, req.body),
+            );
+          } catch (error) {
+            await server.close().catch((closeError: unknown) => {
+              console.error(
+                `[mcp-http] initialize cleanup failed (${formatErrorForLog(closeError)})`,
+              );
+            });
+            throw error;
+          }
+
+          if (!transport.sessionId) {
+            console.warn("[mcp-http] initialize completed without session id");
+            await server.close();
+            return;
+          }
+
+          const createdAt = Date.now();
+          sessions.set(transport.sessionId, {
+            sessionId: transport.sessionId,
+            transport,
+            server,
+            bearerTokenDigest: digestBearerToken(bearerToken),
+            createdAt,
+            lastActivityAt: createdAt,
+            activeRequests: 0,
+            credentialValidated: false,
+          });
+          logInfo(`[mcp-http] initialize completed elapsed=${formatDurationMs(startedAt)}`);
           return;
+        } finally {
+          pendingInitializations -= 1;
         }
-
-        sessions.set(transport.sessionId, {
-          sessionId: transport.sessionId,
-          transport,
-          server,
-          bearerTokenDigest: digestBearerToken(bearerToken),
-          lastActivityAt: Date.now(),
-          activeRequests: 0,
-          credentialValidated: false,
-        });
-        logInfo(`[mcp-http] initialize completed elapsed=${formatDurationMs(startedAt)}`);
-        return;
       }
 
       const session = sessions.get(sessionId ?? "");

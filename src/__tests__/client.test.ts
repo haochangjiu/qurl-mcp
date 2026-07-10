@@ -334,28 +334,6 @@ describe("QURLClient adapter", () => {
       expect(err.requestId).toBe("req_9");
     });
 
-    it("marks the request credential validated on a downstream 403", async () => {
-      sdk.get.mockRejectedValue(
-        new AuthorizationError({
-          status: 403,
-          code: "insufficient_scope",
-          title: "Forbidden",
-          detail: "missing qurl:read",
-        }),
-      );
-      let credentialValidated = false;
-
-      await runWithRequestAuthContext(
-        { markCredentialValidated: () => (credentialValidated = true) },
-        () =>
-          newClient()
-            .getQURL("r_x")
-            .catch(() => undefined),
-      );
-
-      expect(credentialValidated).toBe(true);
-    });
-
     it("does not validate the request credential on a downstream 401", async () => {
       sdk.get.mockRejectedValue(
         new AuthenticationError({
@@ -379,6 +357,16 @@ describe("QURLClient adapter", () => {
     });
 
     it.each([
+      [
+        "403",
+        () =>
+          new AuthorizationError({
+            status: 403,
+            code: "insufficient_scope",
+            title: "Forbidden",
+            detail: "missing qurl:read",
+          }),
+      ],
       [
         "404",
         () =>

@@ -175,7 +175,7 @@ export function uploadFileDataQurlTool(client: IQURLClient) {
     },
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadFileDataQurlSchema>) => {
       // Preflight connector config before decoding payloads so auth/config errors fail fast.
-      getConnectorConfig();
+      const connectorConfig = getConnectorConfig();
 
       const fileName = normalizeFileName(input.file_name);
       validateFileNameContentType(fileName, input.content_type);
@@ -185,7 +185,12 @@ export function uploadFileDataQurlTool(client: IQURLClient) {
         input.content_type,
       );
 
-      const upload = await uploadToConnector(fileData, fileName, input.content_type);
+      const upload = await uploadToConnector(
+        fileData,
+        fileName,
+        input.content_type,
+        connectorConfig,
+      );
 
       const mintInput = {
         label: input.label,

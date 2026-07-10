@@ -16,7 +16,6 @@ import type {
   Resource as SDKResource,
   UpdateResourceQurlInput as SDKUpdateResourceQurlInput,
 } from "@layervai/qurl";
-import type { EmailDeliveryResult } from "./email-types.js";
 
 export interface QURLClientConfig {
   apiKey: string;
@@ -92,7 +91,6 @@ export interface CreateQURLData {
   expires_at: string;
   label?: string;
   type?: string;
-  email_delivery?: EmailDeliveryResult;
 }
 
 export interface AIAgentPolicy {
@@ -239,7 +237,6 @@ export interface MintLinkOutput {
   branded_domain?: string;
   expires_at: string;
   type?: string;
-  email_delivery?: EmailDeliveryResult;
 }
 
 // Discriminated on `success` so consumers narrowing on the boolean get
@@ -540,7 +537,9 @@ export class QURLClient implements IQURLClient {
       // The SDK passes through HTTP 400 (all items failed) as a populated
       // BatchCreateOutput rather than throwing, so the all-failed case still
       // reaches here with `failed > 0` — matching the old passthrough behavior
-      // that batch-create.ts depends on.
+      // that batch-create.ts depends on. A populated response proves the API
+      // accepted the credential, so the shared call wrapper intentionally
+      // marks the request credential validated even for this HTTP 400 shape.
       const out = await sdk.batchCreate(input);
       return {
         data: {

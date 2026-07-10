@@ -394,12 +394,12 @@ export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeC
     throw new Error("maxUploadFileDataBytes must not exceed 100mb.");
   }
   const defaultQurlApiUrl = normalizeServiceBaseUrl(
-    process.env.QURL_API_URL?.trim() || fileConfig.defaultQurlApiUrl || "https://api.layerv.ai",
+    trimString(process.env.QURL_API_URL) || fileConfig.defaultQurlApiUrl || "https://api.layerv.ai",
     "QURL_API_URL/defaultQurlApiUrl",
-    false,
+    true,
   );
   const connectorUrlValue =
-    process.env.QURL_CONNECTOR_URL?.trim() || fileConfig.defaultQurlConnectorUrl;
+    trimString(process.env.QURL_CONNECTOR_URL) || fileConfig.defaultQurlConnectorUrl;
   const defaultQurlConnectorUrl = connectorUrlValue
     ? normalizeServiceBaseUrl(connectorUrlValue, "QURL_CONNECTOR_URL/defaultQurlConnectorUrl", true)
     : undefined;

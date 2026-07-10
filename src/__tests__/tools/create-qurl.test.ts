@@ -334,9 +334,26 @@ describe("createQurlTool", () => {
       });
     });
 
-    it("returns the one-shot link when email delivery throws", async () => {
+    it.each([
+      [
+        "SMTP connection failed",
+        "Email delivery was not attempted because SMTP configuration or connection failed.",
+      ],
+      [
+        "Request-scoped qURL credentials are unavailable",
+        "Email delivery authorization context was unavailable.",
+      ],
+      [
+        "Email subject must be a single line",
+        "Email delivery was not attempted because recipient or message validation failed.",
+      ],
+      [
+        "internal setup at smtp.private failed",
+        "Email delivery was not attempted because delivery setup failed.",
+      ],
+    ])("returns the one-shot link with a sanitized email failure: %s", async (error, reason) => {
       const mockCreate = vi.fn().mockResolvedValue({ data: fixture });
-      vi.mocked(sendEmailMessage).mockRejectedValue(new Error("SMTP connection failed"));
+      vi.mocked(sendEmailMessage).mockRejectedValue(new Error(error));
       const tool = createQurlTool(makeMockClient({ createQURL: mockCreate }));
 
       const result = await tool.handler({
@@ -350,10 +367,10 @@ describe("createQurlTool", () => {
       expect(parsed.email_delivery).toEqual(
         expect.objectContaining({
           attempted: false,
-          skipped_reason:
-            "Email delivery was not attempted because SMTP configuration or connection failed.",
+          skipped_reason: reason,
         }),
       );
+      expect(parsed.email_delivery.skipped_reason).not.toContain("smtp.private");
     });
   });
 });

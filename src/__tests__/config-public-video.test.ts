@@ -177,7 +177,11 @@ describe("public video config", () => {
     expect(() => loadRuntimeConfig(configPath)).toThrow("must not exceed 100mb");
 
     writeFileSync(configPath, JSON.stringify({ defaultQurlApiUrl: "http://api.example.com" }));
-    expect(loadRuntimeConfig(configPath).defaultQurlApiUrl).toBe("http://api.example.com");
+    expect(() => loadRuntimeConfig(configPath)).toThrow("must use HTTPS");
+    clearRuntimeConfigCache();
+
+    writeFileSync(configPath, JSON.stringify({ defaultQurlApiUrl: "http://127.0.0.1:8080" }));
+    expect(loadRuntimeConfig(configPath).defaultQurlApiUrl).toBe("http://127.0.0.1:8080");
     clearRuntimeConfigCache();
 
     writeFileSync(
@@ -189,7 +193,7 @@ describe("public video config", () => {
 
     writeFileSync(
       configPath,
-      JSON.stringify({ defaultQurlConnectorUrl: "https://connector.example.com?redirect=other" }),
+      JSON.stringify({ defaultQurlConnectorUrl: "https://user:pass@connector.example.com" }),
     );
     expect(() => loadRuntimeConfig(configPath)).toThrow("must not contain credentials");
   });

@@ -23,7 +23,9 @@ export const emailDeliveryInputSchema = z.object({
     .string()
     .max(5000)
     .optional()
-    .describe("Optional plain-text message to prepend above the generated qURL details."),
+    .describe(
+      "Optional plain-text message to prepend above generated qURL details. The final assembled email is limited to 10,000 characters.",
+    ),
 });
 
 export type EmailDeliveryInput = z.infer<typeof emailDeliveryInputSchema>;

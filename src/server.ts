@@ -31,6 +31,8 @@ import { rotateAccessPrompt } from "./prompts/rotate-access.js";
  */
 export type ToolFactory = (
   client: IQURLClient,
+  // Transport-sensitive tools consume this security context. Other factories
+  // intentionally ignore the optional second argument supplied by createServer.
   runtime?: ToolRuntimeOptions,
 ) => {
   name: string;
@@ -75,8 +77,9 @@ export const toolFactories = [
 
 export function getToolFactoriesForMode(mode: ServerMode): ToolFactory[] {
   // Security boundary: remote HTTP callers can upload bounded request bytes
-  // but never read server-local paths. Local stdio callers may use all three
-  // upload forms, including base64/text for in-chat attachments.
+  // but never choose server-local paths. upload_text_qurl may read only the
+  // tool's own mkdtemp PDF in HTTP mode. Local stdio callers may use all three
+  // upload forms, including caller-chosen paths and base64/text attachments.
   return mode === "http"
     ? toolFactories.filter((factory) => factory !== uploadFileQurlTool)
     : toolFactories;

@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { constants } from "node:fs";
-import { lstat, open, type FileHandle } from "node:fs/promises";
+import { open, type FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
@@ -121,12 +121,6 @@ export async function uploadLocalFileAndMint(
   validateFileNameContentType(fileName, contentType);
 
   const maxBytes = getMaxUploadFileBytes();
-  const pathStat = await lstat(sourcePath);
-  if (pathStat.isSymbolicLink()) {
-    throw new Error("file_path must not point to a symbolic link");
-  }
-  if (!pathStat.isFile()) throw new Error("file_path must point to a regular file");
-
   let fileHandle: FileHandle;
   try {
     fileHandle = await open(sourcePath, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -140,9 +134,6 @@ export async function uploadLocalFileAndMint(
   try {
     const sourceStat = await fileHandle.stat();
     if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
-    if (sourceStat.dev !== pathStat.dev || sourceStat.ino !== pathStat.ino) {
-      throw new Error("file_path changed while it was being opened");
-    }
     if (sourceStat.size > maxBytes) {
       throw new Error("File exceeds the configured upload size limit.");
     }

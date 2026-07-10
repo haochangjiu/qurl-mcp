@@ -169,12 +169,10 @@ after the request body is accepted.
 Set `QURL_API_KEY` in the environment for `stdio` mode. In HTTP mode, every
 client request supplies its own qURL API key as a bearer token.
 
-For compatibility with private/internal qURL API deployments,
-`defaultQurlApiUrl` and `QURL_API_URL` may use HTTP. Doing so for a non-loopback
-host logs a startup warning because API keys and qURL data are sent without
-transport encryption; use HTTPS whenever the traffic is not already protected
-by a trusted private transport. Upload connector URLs remain HTTPS-only except
-for loopback development endpoints.
+`defaultQurlApiUrl` and `QURL_API_URL` require HTTPS for non-loopback hosts
+because qURL API keys and data are bearer-sent to that destination. Plain HTTP
+is accepted only for literal loopback development endpoints. Upload connector
+URLs follow the same HTTPS-except-loopback rule.
 Connector destinations are trusted operator configuration rather than caller
 input; private addresses and DNS resolution are therefore permitted. Pin the
 connector hostname in deployment DNS and do not point it at metadata services.

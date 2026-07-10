@@ -1,10 +1,13 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { accessPolicySchema } from "./create-qurl.js";
-import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
+import {
+  emailDeliveryInputSchema,
+  maybeDeliverToolEmail,
+  toEmailAugmentedResult,
+} from "./email-delivery.js";
 import {
   resourceIdSchema,
-  toStructuredContent,
   withMissingApiKeyHandler,
   zodErrorToToolResult,
   type ToolRuntimeOptions,
@@ -99,16 +102,7 @@ export function mintLinkTool(client: IQURLClient, runtime: ToolRuntimeOptions = 
           ...(result.data.type ? [`Type: ${result.data.type}`] : []),
         ],
       });
-      const payload = emailResult ? { ...result.data, email_delivery: emailResult } : result.data;
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(payload),
-          },
-        ],
-        structuredContent: toStructuredContent(payload),
-      };
+      return toEmailAugmentedResult(result.data, emailResult);
     }),
   };
 }

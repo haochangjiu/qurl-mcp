@@ -3,6 +3,7 @@ import type { PublicVideoConfig } from "../config.js";
 import { escapeHtml, REFERENCE_SITE_URL } from "./html.js";
 
 export function getPublicVideoFileRoute(pagePath: string): string {
+  // pagePath has already passed normalizePublicPath at configuration load.
   return `${pagePath.replace(/\/+$/, "")}/file`;
 }
 

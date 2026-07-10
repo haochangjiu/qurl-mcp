@@ -257,6 +257,54 @@ describe("sendEmailMessage", () => {
     );
   });
 
+  it("records per-recipient SMTP failures and still closes the transport", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+    nodemailerMocks.sendMail
+      .mockRejectedValueOnce(new Error("recipient mailbox unavailable"))
+      .mockResolvedValueOnce({ messageId: "msg-2" });
+
+    const result = await sendEmailMessage({
+      to: ["first@example.com", "second@example.com"],
+      subject: "Secure link ready",
+      text: "Body",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        sent: 1,
+        failed: 1,
+        results: [
+          expect.objectContaining({
+            email: "first@example.com",
+            success: false,
+            error: "recipient mailbox unavailable",
+          }),
+          expect.objectContaining({
+            email: "second@example.com",
+            success: true,
+            message_id: "msg-2",
+          }),
+        ],
+      }),
+    );
+    expect(nodemailerMocks.close).toHaveBeenCalledOnce();
+  });
+
   it("rejects a message above the configured per-message recipient cap", async () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(

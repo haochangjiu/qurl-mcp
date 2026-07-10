@@ -1,11 +1,11 @@
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
+import { withMissingApiKeyHandler, type ToolRuntimeOptions } from "./_shared.js";
 import {
-  toStructuredContent,
-  withMissingApiKeyHandler,
-  type ToolRuntimeOptions,
-} from "./_shared.js";
-import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
+  emailDeliveryInputSchema,
+  maybeDeliverToolEmail,
+  toEmailAugmentedResult,
+} from "./email-delivery.js";
 import { createQurlOutputSchema } from "./output-schemas.js";
 
 export const aiAgentPolicySchema = z.object({
@@ -130,16 +130,7 @@ export function createQurlTool(
           ...(result.data.type ? [`Type: ${result.data.type}`] : []),
         ],
       });
-      const payload = emailResult ? { ...result.data, email_delivery: emailResult } : result.data;
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(payload),
-          },
-        ],
-        structuredContent: toStructuredContent(payload),
-      };
+      return toEmailAugmentedResult(result.data, emailResult);
     }),
   };
 }

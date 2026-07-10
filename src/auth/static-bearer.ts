@@ -43,7 +43,7 @@ export function createPassthroughBearerVerifier(): {
 
 export function createQurlClientFromBearerToken(
   token: string,
-  config: Pick<PassthroughBearerAuthConfig, "qurlApiUrl">,
+  config: PassthroughBearerAuthConfig,
 ): QURLClient {
   return new QURLClient({
     apiKey: token.trim(),

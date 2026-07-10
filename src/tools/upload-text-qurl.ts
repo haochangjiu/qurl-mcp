@@ -3,12 +3,12 @@ import type { IQURLClient } from "../client.js";
 import { formatErrorForLog } from "../logging.js";
 import { createTextPdfTempFile } from "../services/text-pdf.js";
 import { accessPolicySchema } from "./create-qurl.js";
+import { withMissingApiKeyHandler, type ToolRuntimeOptions } from "./_shared.js";
 import {
-  toStructuredContent,
-  withMissingApiKeyHandler,
-  type ToolRuntimeOptions,
-} from "./_shared.js";
-import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
+  emailDeliveryInputSchema,
+  maybeDeliverToolEmail,
+  toEmailAugmentedResult,
+} from "./email-delivery.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 import { getConnectorConfig } from "./upload-file-shared.js";
 import { uploadLocalFileAndMint } from "./upload-file-qurl.js";
@@ -134,17 +134,7 @@ export function uploadTextQurlTool(
           ],
         });
 
-        const payload = emailResult ? { ...result, email_delivery: emailResult } : result;
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(payload),
-            },
-          ],
-          structuredContent: toStructuredContent(payload),
-        };
+        return toEmailAugmentedResult(result, emailResult);
       } finally {
         try {
           await pdfFile.cleanup();

@@ -6,6 +6,7 @@ import { createServer as createNodeServer, request, type Server } from "node:htt
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { markRequestCredentialValidated } from "../auth/request-context.js";
+import { QURLAPIError } from "../client.js";
 import { createHttpRuntime } from "../http.js";
 import type { HttpServerConfig } from "../http-config.js";
 import { makeMockClient, sampleCreateQURLData } from "./helpers.js";
@@ -140,6 +141,26 @@ describe("HTTP MCP server", () => {
     );
   });
 
+  it("returns 413 before session handling for an oversized valid JSON body", async () => {
+    const limitedRuntime = createHttpRuntime(
+      { ...testConfig, maxUploadFileDataBytes: 1 },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(limitedRuntime.app);
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: bearerHeaders("lv_live_oversized_json"),
+      body: JSON.stringify({ payload: "x".repeat(70_000) }),
+    });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({ message: "Request body is too large." }),
+      }),
+    );
+  });
+
   it("initializes from a single-message JSON-RPC batch", async () => {
     const baseUrl = await start();
     const response = await fetch(`${baseUrl}/mcp`, {
@@ -253,6 +274,21 @@ describe("HTTP MCP server", () => {
     });
     expect(listed.status).toBe(200);
     expect(await listed.text()).toContain('"name":"create_qurl"');
+  });
+
+  it("rejects an unknown session id without creating state", async () => {
+    const baseUrl = await start();
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        ...bearerHeaders("lv_live_forged_session"),
+        "mcp-session-id": "00000000-0000-4000-8000-000000000000",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(getActiveSessionCount()).toBe(0);
   });
 
   it("evicts abandoned sessions after the configured idle window", async () => {
@@ -402,6 +438,54 @@ describe("HTTP MCP server", () => {
     }
   });
 
+  it("keeps a session unvalidated after a downstream authentication failure", async () => {
+    const rejectedRuntime = createHttpRuntime(testConfig, {
+      version: "0.0.0-test",
+      clientFactory: () =>
+        makeMockClient({
+          createQURL: vi
+            .fn()
+            .mockRejectedValue(new QURLAPIError(401, "invalid_api_key", "Invalid API key.")),
+        }),
+    });
+    const baseUrl = await start(rejectedRuntime.app);
+    const token = "lv_live_rejected";
+
+    try {
+      const sessionId = await initialize(baseUrl, token);
+      await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "notifications/initialized",
+          params: {},
+        }),
+      });
+      const created = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: { name: "create_qurl", arguments: { target_url: "https://example.com" } },
+        }),
+      });
+
+      expect(created.status).toBe(200);
+      expect(await created.text()).toContain("Invalid API key");
+      expect(
+        await rejectedRuntime.sweepExpiredSessions(
+          Date.now() + testConfig.unvalidatedSessionTtlMs + 1,
+        ),
+      ).toBe(1);
+      expect(rejectedRuntime.getActiveSessionCount()).toBe(0);
+    } finally {
+      await rejectedRuntime.closeAllSessions();
+    }
+  });
+
   it("removes sessions on explicit DELETE", async () => {
     const baseUrl = await start();
     const sessionId = await initialize(baseUrl, "lv_live_delete");
@@ -443,6 +527,7 @@ describe("HTTP MCP server", () => {
     const baseUrl = await start(allowlistedRuntime.app);
 
     expect(await requestWithHost(`${baseUrl}/healthz`, "mcp.example.com")).toBe(200);
+    expect(await requestWithHost(`${baseUrl}/healthz`, "mcp.example.com:8443")).toBe(200);
     expect(await requestWithHost(`${baseUrl}/healthz`, "attacker.example")).toBe(403);
   });
 

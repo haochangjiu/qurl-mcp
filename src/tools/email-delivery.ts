@@ -3,6 +3,7 @@ import { uniqueRecipients } from "../email-addresses.js";
 import type { EmailDeliveryResult } from "../email-types.js";
 import { formatErrorForLog } from "../logging.js";
 import { sendEmailMessage } from "../services/email.js";
+import { toStructuredContent } from "./_shared.js";
 
 export const emailDeliveryInputSchema = z.object({
   to: z
@@ -32,6 +33,17 @@ export interface ToolEmailInput {
   delivery?: EmailDeliveryInput;
   defaultSubject: string;
   detailLines: string[];
+}
+
+export function toEmailAugmentedResult<T extends object & { length?: never }>(
+  base: T,
+  emailResult: EmailDeliveryResult | undefined,
+) {
+  const payload = emailResult ? { ...base, email_delivery: emailResult } : base;
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
+    structuredContent: toStructuredContent(payload),
+  };
 }
 
 export async function maybeDeliverToolEmail(

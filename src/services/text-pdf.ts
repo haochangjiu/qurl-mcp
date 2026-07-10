@@ -16,8 +16,12 @@ function ensurePdfFileName(input: string | undefined): string {
   return `${withoutExt || "content"}.pdf`;
 }
 
-function resolveFontPath(): string | undefined {
-  return existsSync(bundledFontPath) ? bundledFontPath : undefined;
+export function resolveFontPath(candidatePath = bundledFontPath): string | undefined {
+  if (existsSync(candidatePath)) return candidatePath;
+  console.warn(
+    "[text-pdf] bundled Noto Sans SC font is missing; falling back to Helvetica with limited CJK coverage",
+  );
+  return undefined;
 }
 
 export async function createTextPdfTempFile(input: {
@@ -43,22 +47,48 @@ export async function createTextPdfTempFile(input: {
         size: "A4",
       });
       const stream = createWriteStream(filePath);
+      let settled = false;
 
-      stream.on("finish", resolve);
-      stream.on("error", reject);
-      doc.on("error", reject);
+      const succeed = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const fail = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        stream.removeAllListeners("finish");
+        if (stream.closed) {
+          doc.removeAllListeners();
+          if (!doc.destroyed) doc.destroy();
+          reject(error);
+          return;
+        }
+        stream.once("close", () => reject(error));
+        if (!stream.destroyed) stream.destroy();
+        doc.removeAllListeners();
+        if (!doc.destroyed) doc.destroy();
+      };
 
-      doc.pipe(stream);
-      doc.info.Title = input.title ?? fileName;
-      if (fontPath) {
-        doc.font(fontPath);
+      stream.once("finish", succeed);
+      stream.once("error", fail);
+      doc.once("error", fail);
+
+      try {
+        doc.pipe(stream);
+        doc.info.Title = input.title ?? fileName;
+        if (fontPath) {
+          doc.font(fontPath);
+        }
+        doc.fontSize(12);
+        doc.text(input.content, {
+          align: "left",
+          lineGap: 4,
+        });
+        doc.end();
+      } catch (error) {
+        fail(error);
       }
-      doc.fontSize(12);
-      doc.text(input.content, {
-        align: "left",
-        lineGap: 4,
-      });
-      doc.end();
     });
 
     const fileStat = await stat(filePath);

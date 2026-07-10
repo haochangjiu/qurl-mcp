@@ -3,12 +3,12 @@ import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
 import { accessPolicySchema } from "./create-qurl.js";
+import { withMissingApiKeyHandler, type ToolRuntimeOptions } from "./_shared.js";
 import {
-  toStructuredContent,
-  withMissingApiKeyHandler,
-  type ToolRuntimeOptions,
-} from "./_shared.js";
-import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
+  emailDeliveryInputSchema,
+  maybeDeliverToolEmail,
+  toEmailAugmentedResult,
+} from "./email-delivery.js";
 import {
   getConnectorConfig,
   getMaxUploadFileBytes,
@@ -231,12 +231,7 @@ export function uploadFileDataQurlTool(
           ...(input.label ? [`Label: ${input.label}`] : []),
         ],
       });
-      const payload = emailResult ? { ...result, email_delivery: emailResult } : result;
-
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(payload) }],
-        structuredContent: toStructuredContent(payload),
-      };
+      return toEmailAugmentedResult(result, emailResult);
     }),
   };
 }

@@ -25,8 +25,10 @@ import {
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 import { uploadMintOptionsShape } from "./upload-mint-options.js";
 
-// This schema ceiling is a protocol-wide safety bound. HTTP body parsing and
-// getMaxUploadFileBytes apply the operator's usually smaller runtime limit.
+// Uploads pass three deliberate bounds: this protocol-wide raw-string ceiling,
+// the HTTP JSON-body limit before tool dispatch, and getMaxUploadFileBytes on
+// the normalized decoded payload. The operator's runtime limit is usually the
+// smallest; keeping this first ceiling fixed preserves schema stability.
 const MAX_UPLOAD_FILE_BASE64_CHARACTERS = Math.ceil((MAX_UPLOAD_FILE_DATA_BYTES * 4) / 3) + 1024;
 
 export const uploadFileDataQurlSchema = z
@@ -148,12 +150,6 @@ function decodeBase64File(input: string, maxBytes: number, contentType: string):
 
   if (fileData.byteLength === 0) {
     throw new Error("file_base64 decoded to an empty file");
-  }
-
-  if (fileData.byteLength > maxBytes) {
-    throw new Error(
-      "Decoded file exceeds the allowed upload size. Reduce the file size and try again.",
-    );
   }
 
   validateFileSignature(fileData, contentType);

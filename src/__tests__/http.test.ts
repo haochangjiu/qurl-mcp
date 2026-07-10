@@ -1,6 +1,7 @@
 import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { rateLimit } from "express-rate-limit";
+import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { createServer as createNodeServer, request, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -744,9 +745,15 @@ describe("HTTP MCP server", () => {
   it("adds defensive headers to public legal pages", async () => {
     const baseUrl = await start();
     const response = await fetch(`${baseUrl}/legal/privacy`);
+    const html = await response.text();
+    const inlineStyle = /<style>([\s\S]*?)<\/style>/.exec(html)?.[1];
+    if (!inlineStyle) throw new Error("Expected inline legal-page styles");
+    const styleHash = createHash("sha256").update(inlineStyle, "utf8").digest("base64");
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    expect(response.headers.get("content-security-policy")).toContain(`'sha256-${styleHash}'`);
+    expect(response.headers.get("content-security-policy")).not.toContain("'unsafe-inline'");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("x-frame-options")).toBe("DENY");
   });

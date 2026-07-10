@@ -118,6 +118,9 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   } else {
     app.use(localhostHostValidation());
   }
+  // Host validation may admit aliases for routing, but browser-originated MCP
+  // requests intentionally use the single canonical public origin in baseUrl.
+  // Do not widen this check merely because allowedHosts contains extra names.
   const allowedOrigin = new URL(baseUrl).origin;
   app.use((req, res, next) => {
     const origin = req.headers.origin;
@@ -619,10 +622,17 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     rejectJsonRpc(res, 500, "Internal server error.");
   };
 
-  function setPublicPageSecurityHeaders(res: express.Response): void {
+  function getInlineStyleSources(html: string): string[] {
+    return [...html.matchAll(/<style>([\s\S]*?)<\/style>/gi)].map(
+      (match) => `'sha256-${createHash("sha256").update(match[1], "utf8").digest("base64")}'`,
+    );
+  }
+
+  function setPublicPageSecurityHeaders(res: express.Response, html?: string): void {
+    const styleSources = html ? getInlineStyleSources(html) : [];
+    const stylePolicy = styleSources.length > 0 ? styleSources.join(" ") : "'none'";
     res.set({
-      "Content-Security-Policy":
-        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": `default-src 'none'; style-src ${stylePolicy}; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
@@ -634,7 +644,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const html = renderLegalDocumentHtml(document.path, baseUrl);
     if (!html) continue;
     app.get(document.path, publicRouteRateLimiter, (_req, res) => {
-      setPublicPageSecurityHeaders(res);
+      setPublicPageSecurityHeaders(res, html);
       res.type("html").send(html);
     });
   }
@@ -646,7 +656,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const videoPageHtml = renderPublicVideoPageHtml(publicVideo, baseUrl);
 
     app.get(videoPagePath, publicRouteRateLimiter, (_req, res) => {
-      setPublicPageSecurityHeaders(res);
+      setPublicPageSecurityHeaders(res, videoPageHtml);
       res.type("html").send(videoPageHtml);
     });
 

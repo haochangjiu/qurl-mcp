@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -156,6 +157,34 @@ describe("uploadFileDataQurlTool", () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.file_name).toBe("sample.pdf");
       expect(parsed.qurl_site).toBeUndefined();
+    });
+
+    it("rejects mismatched data URL, filename, and file signatures before upload", async () => {
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileDataQurlTool(makeMockClient());
+
+      await expect(
+        tool.handler({
+          file_base64: `data:image/png;base64,${fixtureBase64}`,
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toThrow("Data URL media type does not match content_type");
+      await expect(
+        tool.handler({
+          file_base64: fixtureBase64,
+          file_name: "sample.png",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toThrow("does not match the filename extension");
+      await expect(
+        tool.handler({
+          file_base64: Buffer.from("not a PDF").toString("base64"),
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toThrow("does not match declared content_type");
+      expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 
     it("accepts URL-safe base64 without padding", async () => {

@@ -16,7 +16,7 @@ RUN npm prune --omit=dev
 FROM node:26-alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9
 LABEL org.opencontainers.image.source="https://github.com/layervai/qurl-mcp" \
       org.opencontainers.image.description="MCP server for qURL — secure expiring access links for AI agents." \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT AND OFL-1.1"
 
 # tini reaps zombies and forwards SIGTERM to node so `docker stop`
 # triggers a graceful shutdown instead of relying on Node's default
@@ -33,4 +33,5 @@ COPY --chown=node:node --from=build /app/package.json ./
 ENV NODE_ENV=production
 USER node
 
-ENTRYPOINT ["/sbin/tini", "--", "node", "dist/index.js"]
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.js"]

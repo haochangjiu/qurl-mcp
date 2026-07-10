@@ -5,8 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const nodemailerMocks = vi.hoisted(() => {
   const sendMail = vi.fn();
-  const createTransport = vi.fn(() => ({ sendMail }));
-  return { sendMail, createTransport };
+  const close = vi.fn();
+  const createTransport = vi.fn(() => ({ sendMail, close }));
+  return { sendMail, close, createTransport };
 });
 
 vi.mock("nodemailer", () => ({
@@ -15,7 +16,8 @@ vi.mock("nodemailer", () => ({
   },
 }));
 
-import { sendEmailMessage } from "../../services/email.js";
+import { clearRuntimeConfigCache } from "../../config.js";
+import { clearEmailQuotaState, sendEmailMessage } from "../../services/email.js";
 
 describe("sendEmailMessage", () => {
   const originalConfigPath = process.env.QURL_MCP_CONFIG;
@@ -26,10 +28,13 @@ describe("sendEmailMessage", () => {
   const originalSmtpPassword = process.env.QURL_SMTP_PASSWORD;
   const originalSmtpFromEmail = process.env.QURL_SMTP_FROM_EMAIL;
   const originalSmtpFromName = process.env.QURL_SMTP_FROM_NAME;
+  const originalApiKey = process.env.QURL_API_KEY;
   let tempDir: string | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    clearEmailQuotaState();
+    clearRuntimeConfigCache();
     delete process.env.QURL_SMTP_HOST;
     delete process.env.QURL_SMTP_PORT;
     delete process.env.QURL_SMTP_SECURE;
@@ -37,6 +42,7 @@ describe("sendEmailMessage", () => {
     delete process.env.QURL_SMTP_PASSWORD;
     delete process.env.QURL_SMTP_FROM_EMAIL;
     delete process.env.QURL_SMTP_FROM_NAME;
+    delete process.env.QURL_API_KEY;
     tempDir = mkdtempSync(join(tmpdir(), "qurl-email-test-"));
   });
 
@@ -49,6 +55,9 @@ describe("sendEmailMessage", () => {
     process.env.QURL_SMTP_PASSWORD = originalSmtpPassword;
     process.env.QURL_SMTP_FROM_EMAIL = originalSmtpFromEmail;
     process.env.QURL_SMTP_FROM_NAME = originalSmtpFromName;
+    process.env.QURL_API_KEY = originalApiKey;
+    clearEmailQuotaState();
+    clearRuntimeConfigCache();
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true });
       tempDir = undefined;
@@ -72,6 +81,20 @@ describe("sendEmailMessage", () => {
       recipients: ["alice@example.com"],
       skipped_reason: "SMTP is not configured.",
     });
+    expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid recipients and header-injection subjects before SMTP", async () => {
+    await expect(
+      sendEmailMessage({ to: ["not-an-email"], subject: "Hello", text: "World" }),
+    ).rejects.toThrow("valid addresses");
+    await expect(
+      sendEmailMessage({
+        to: ["alice@example.com"],
+        subject: "Hello\r\nBcc: attacker@example.com",
+        text: "World",
+      }),
+    ).rejects.toThrow("single line");
     expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();
   });
 
@@ -111,6 +134,9 @@ describe("sendEmailMessage", () => {
         user: "mailer",
         pass: "secret",
       },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
     });
     expect(nodemailerMocks.sendMail).toHaveBeenCalledTimes(2);
     expect(nodemailerMocks.sendMail).toHaveBeenNthCalledWith(
@@ -147,5 +173,84 @@ describe("sendEmailMessage", () => {
         },
       ],
     });
+    expect(nodemailerMocks.close).toHaveBeenCalledOnce();
+  });
+
+  it("enforces recipient allowlists without attempting blocked deliveries", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+          allowedRecipientDomains: ["example.com"],
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+    nodemailerMocks.sendMail.mockResolvedValue({ messageId: "msg-1" });
+
+    const result = await sendEmailMessage({
+      to: ["allowed@example.com", "blocked@elsewhere.test"],
+      subject: "Secure link ready",
+      text: "Body",
+    });
+
+    expect(nodemailerMocks.sendMail).toHaveBeenCalledOnce();
+    expect(nodemailerMocks.sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "allowed@example.com" }),
+    );
+    expect(result.sent).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.results).toContainEqual(
+      expect.objectContaining({
+        email: "blocked@elsewhere.test",
+        success: false,
+        skipped: true,
+      }),
+    );
+    expect(nodemailerMocks.close).toHaveBeenCalledOnce();
+  });
+
+  it("enforces the per-key hourly recipient quota", async () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+          maxRecipientsPerHour: 1,
+        },
+      }),
+    );
+    process.env.QURL_MCP_CONFIG = configPath;
+    process.env.QURL_API_KEY = "lv_live_quota_test";
+    nodemailerMocks.sendMail.mockResolvedValue({ messageId: "msg-1" });
+
+    const first = await sendEmailMessage({
+      to: ["first@example.com"],
+      subject: "First",
+      text: "Body",
+    });
+    const second = await sendEmailMessage({
+      to: ["second@example.com"],
+      subject: "Second",
+      text: "Body",
+    });
+
+    expect(first.sent).toBe(1);
+    expect(second.attempted).toBe(false);
+    expect(second.skipped_reason).toContain("hourly limit of 1");
+    expect(nodemailerMocks.sendMail).toHaveBeenCalledOnce();
   });
 });

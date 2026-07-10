@@ -1,20 +1,17 @@
 import { Buffer } from "node:buffer";
 import { z } from "zod";
-import { getRequestMaxUploadFileDataBytes } from "../auth/request-context.js";
 import type { IQURLClient } from "../client.js";
-import {
-  DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
-  loadRuntimeConfig,
-  parseSizeBytes,
-} from "../config.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
 import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
 import {
   getConnectorConfig,
+  getMaxUploadFileBytes,
   normalizeFileName,
   supportedMimeTypes,
   uploadToConnector,
+  validateFileNameContentType,
+  validateFileSignature,
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 
@@ -28,6 +25,7 @@ export const uploadFileDataQurlSchema = z.object({
   file_name: z
     .string()
     .min(1)
+    .max(255)
     .describe(
       "Filename to register with the connector. `.jpg` and `.jpeg` files should use `image/jpeg`.",
     ),
@@ -65,21 +63,6 @@ export const uploadFileDataQurlSchema = z.object({
       "Optional email notification settings for sending the uploaded file's qURL to one or more recipients.",
     ),
 });
-
-function getMaxUploadFileDataBytes(): number {
-  const requestScoped = getRequestMaxUploadFileDataBytes();
-  if (requestScoped) return requestScoped;
-
-  if (process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES) {
-    return parseSizeBytes(
-      process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES,
-      DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
-      "MCP_MAX_UPLOAD_FILE_DATA_BYTES",
-    );
-  }
-
-  return loadRuntimeConfig().maxUploadFileDataBytes;
-}
 
 /**
  * Normalize and validate base64 input for file upload.
@@ -135,7 +118,11 @@ function normalizeBase64Input(input: string): string {
   return normalized.padEnd(normalized.length + (4 - paddingNeeded), "=");
 }
 
-function decodeBase64File(input: string, maxBytes: number): Uint8Array {
+function decodeBase64File(input: string, maxBytes: number, contentType: string): Uint8Array {
+  const dataUrl = /^data:([^;,]+);base64,/i.exec(input.trim());
+  if (dataUrl && dataUrl[1].toLowerCase() !== contentType) {
+    throw new Error("Data URL media type does not match content_type.");
+  }
   const normalized = normalizeBase64Input(input);
   const fileData = Buffer.from(normalized, "base64");
 
@@ -148,6 +135,8 @@ function decodeBase64File(input: string, maxBytes: number): Uint8Array {
       "Decoded file exceeds the allowed upload size. Reduce the file size and try again.",
     );
   }
+
+  validateFileSignature(fileData, contentType);
 
   return fileData;
 }
@@ -164,7 +153,7 @@ export function uploadFileDataQurlTool(client: IQURLClient) {
       "For compressible images, compress them before converting to base64 so the request is smaller and more reliable. " +
       "The tool decodes `file_base64`, uploads the file to `${QURL_CONNECTOR_URL}/api/upload`, then mints a qURL from the returned `resource_id`. " +
       "Supported MIME types are application/pdf, image/png, image/jpeg, image/webp, and image/gif. " +
-      "If `one_time_use` is omitted, the tool defaults it to `true` to match the file-distribution flow in `file-upload-distribution-design.md`. " +
+      "If `one_time_use` is omitted, the tool defaults it to `true` for safer file distribution. " +
       "Requires both `QURL_API_KEY` and `QURL_CONNECTOR_URL` in the server environment or runtime config. " +
       "**Returns:** `{ resource_id: string, qurl_id: string, qurl_link: string, qurl_site?: string, expires_at: string, file_name: string, content_type: string, size_bytes: number, branded_domain?: string, type?: string }`.",
     inputSchema: uploadFileDataQurlSchema,
@@ -181,7 +170,12 @@ export function uploadFileDataQurlTool(client: IQURLClient) {
       getConnectorConfig();
 
       const fileName = normalizeFileName(input.file_name);
-      const fileData = decodeBase64File(input.file_base64, getMaxUploadFileDataBytes());
+      validateFileNameContentType(fileName, input.content_type);
+      const fileData = decodeBase64File(
+        input.file_base64,
+        getMaxUploadFileBytes(),
+        input.content_type,
+      );
 
       const upload = await uploadToConnector(fileData, fileName, input.content_type);
 

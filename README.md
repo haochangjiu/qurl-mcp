@@ -1,4 +1,8 @@
-# qURL MCP
+# @layervai/qurl-mcp
+
+[![npm version](https://img.shields.io/npm/v/@layervai/qurl-mcp.svg)](https://www.npmjs.com/package/@layervai/qurl-mcp)
+
+> **⚠️ Renamed from `@layerv/qurl-mcp` in v0.4.0.** The old package is deprecated and will not receive further updates. If you're using `@layerv/qurl-mcp@0.3.x`, swap the scope in your MCP client config — same binary, same API key, no other changes.
 
 > A qURL MCP Server that supports both local `stdio` mode and remote `HTTP` mode for creating, managing, resolving, and sharing secure access links.
 
@@ -20,7 +24,7 @@ It currently supports:
 | Mode | Purpose | Start Command | Typical Use Case |
 | --- | --- | --- | --- |
 | `stdio` | Local subprocess MCP server | `npm run start` | Claude Desktop, Cursor, Codex, and other local MCP clients |
-| `http` | Remote MCP server | `npm run start:http` | GPT / ChatGPT / public server deployment |
+| `http` | Authenticated remote MCP server | `npm run start:http` | Remote agent runtimes behind HTTPS |
 
 ## Feature Map
 
@@ -134,7 +138,7 @@ Their responsibilities are:
 
 | Field | Purpose |
 | --- | --- |
-| `maxUploadFileDataBytes` | Limits the decoded file size accepted by `upload_file_data_qurl` |
+| `maxUploadFileDataBytes` | Limits decoded and local file uploads (default `10mb`) |
 | `defaultQurlApiUrl` | Base URL of the qURL backend API |
 | `defaultQurlConnectorUrl` | Base URL of the upload connector |
 
@@ -152,6 +156,10 @@ client request supplies its own qURL API key as a bearer token.
 | `smtp.password` | SMTP login password or app-specific code |
 | `smtp.fromEmail` | Sender email address |
 | `smtp.fromName` | Sender display name |
+| `smtp.allowedRecipients` | Optional exact-address allowlist |
+| `smtp.allowedRecipientDomains` | Optional domain allowlist |
+| `smtp.maxRecipientsPerMessage` | Per-message recipient cap (default `10`) |
+| `smtp.maxRecipientsPerHour` | Per-qURL-key rolling hourly recipient cap (default `100`) |
 
 These settings are used when email delivery is requested by tools such as:
 
@@ -160,8 +168,16 @@ These settings are used when email delivery is requested by tools such as:
 - `upload_text_qurl`
 - `upload_file_data_qurl`
 
-Prefer `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, and
-`QURL_SMTP_FROM_EMAIL` environment variables for sensitive SMTP values.
+If either recipient allowlist is configured, only an exact address or domain
+match is delivered. If both are empty, the message and hourly caps still apply.
+The SMTP transport uses bounded connection/socket timeouts and is closed after
+each delivery batch.
+
+Prefer environment variables for SMTP credentials and policy:
+`QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, `QURL_SMTP_FROM_EMAIL`,
+`QURL_SMTP_ALLOWED_RECIPIENTS`, `QURL_SMTP_ALLOWED_RECIPIENT_DOMAINS`,
+`QURL_SMTP_MAX_RECIPIENTS_PER_MESSAGE`, and
+`QURL_SMTP_MAX_RECIPIENTS_PER_HOUR`.
 
 ### Public Video Page Settings
 
@@ -184,16 +200,29 @@ When configured, the HTTP server additionally exposes:
 | `host` | HTTP MCP bind address |
 | `baseUrl` | Public base URL of the service |
 | `allowedHosts` | Host allowlist for Host header validation |
+| `trustProxyHops` | Exact trusted reverse-proxy hop count (default `0`) |
+| `maxSessions` | Hard cap on live MCP sessions (default `1000`) |
+| `sessionIdleTtlMs` | Idle session eviction window (default 15 minutes) |
+| `mcpRateLimitPerMinute` | Per-client `/mcp` request limit (default `120`) |
+| `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`) |
+
+The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
+`allowedHosts` is explicitly configured. Set `trustProxyHops` (or
+`MCP_TRUST_PROXY_HOPS`) to the exact number of trusted proxy hops; leave it at
+`0` for direct connections so forwarded IP headers cannot spoof rate-limit keys.
 
 ## Configuration Priority
 
 By default, configuration is loaded from the two local JSON files above. If a
 file is absent, built-in defaults and environment variables are used.
 
-The following environment variables can override the config file paths:
+The following environment variables independently override the config file paths:
 
 - `QURL_MCP_CONFIG`
 - `QURL_MCP_HTTP_CONFIG`
+
+`QURL_MCP_HTTP_CONFIG` never replaces the shared runtime config path. This keeps
+listener settings from silently shadowing SMTP, connector, or API settings.
 
 Do not commit API keys, SMTP credentials, or private file-system paths.
 
@@ -238,7 +267,7 @@ Start with:
 
 ### Public Page Checks
 
-If public pages are enabled, also verify:
+Also verify the legal pages and, when configured, the video page:
 
 - `/legal/privacy`
 - `/legal/terms`
@@ -267,6 +296,20 @@ docker run -i -e QURL_API_KEY=lv_live_xxx qurl-mcp
 
 If you deploy with Docker, make sure the container can still access the correct config files, or override the config file paths with environment variables.
 
+Run HTTP mode locally in Docker:
+
+```bash
+docker run --rm -p 3000:3000 \
+  -e MCP_HOST=0.0.0.0 \
+  -e MCP_ALLOWED_HOSTS=127.0.0.1,localhost \
+  qurl-mcp node dist/http.js
+```
+
+For a single trusted production reverse proxy, set
+`MCP_TRUST_PROXY_HOPS=1`, use the public HTTPS origin in `MCP_BASE_URL`, and
+set `MCP_ALLOWED_HOSTS` to the public hostname. Do not expose the container's
+listener directly when proxy trust is enabled.
+
 ## Common Commands
 
 | Command | Purpose |
@@ -292,14 +335,12 @@ If you deploy with Docker, make sure the container can still access the correct 
 8. Configure the HTTPS reverse proxy
 9. Verify an authenticated MCP initialization and the optional public pages
 
-## Notes
+## Third-Party Assets
 
-For a more polished public release, it is recommended to add:
-
-- a dedicated nginx deployment guide
-- a dedicated domain verification guide
-- a dedicated GPT / OpenAI Platform submission guide
+Text-to-PDF generation bundles Noto Sans SC for multilingual glyph coverage.
+Its SIL Open Font License and copyright notice are included in
+`assets/fonts/OFL.txt`.
 
 ## License
 
-MIT
+MIT -- [LayerV AI](https://layerv.ai)

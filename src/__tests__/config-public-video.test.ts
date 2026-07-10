@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadHttpServerConfig } from "../http-config.js";
-import { loadRuntimeConfig } from "../config.js";
+import { clearRuntimeConfigCache, getDefaultConfigPath, loadRuntimeConfig } from "../config.js";
 
 describe("public video config", () => {
   const originalConfigPath = process.env.QURL_MCP_CONFIG;
@@ -15,6 +15,7 @@ describe("public video config", () => {
   let tempDir: string | undefined;
 
   beforeEach(() => {
+    clearRuntimeConfigCache();
     delete process.env.QURL_MCP_CONFIG;
     delete process.env.QURL_MCP_HTTP_CONFIG;
     delete process.env.QURL_API_KEY;
@@ -25,6 +26,7 @@ describe("public video config", () => {
   });
 
   afterEach(() => {
+    clearRuntimeConfigCache();
     process.env.QURL_MCP_CONFIG = originalConfigPath;
     process.env.QURL_MCP_HTTP_CONFIG = originalHttpConfigPath;
     process.env.QURL_API_KEY = originalApiKey;
@@ -60,7 +62,7 @@ describe("public video config", () => {
     });
   });
 
-  it("falls back to the HTTP config file for public video settings", () => {
+  it("loads public video settings from the distinct HTTP config file", () => {
     const runtimeConfigPath = join(tempDir!, "qurl-mcp.config.json");
     const httpConfigPath = join(tempDir!, "qurl-mcp.http.json");
 
@@ -76,6 +78,7 @@ describe("public video config", () => {
         port: 3000,
         host: "0.0.0.0",
         baseUrl: "https://qurl.example.com",
+        allowedHosts: ["qurl.example.com"],
         publicVideo: {
           title: "Server Demo",
           pagePath: "show/video",
@@ -94,6 +97,25 @@ describe("public video config", () => {
       pagePath: "/show/video",
       filePath: "/srv/videos/demo.mp4",
     });
+  });
+
+  it("does not use QURL_MCP_HTTP_CONFIG as the shared runtime config path", () => {
+    const httpConfigPath = join(tempDir!, "qurl-mcp.http.json");
+    writeFileSync(
+      httpConfigPath,
+      JSON.stringify({
+        port: 3000,
+        host: "127.0.0.1",
+        defaultQurlApiUrl: "https://wrong.example.com",
+        smtp: { host: "smtp.wrong.example.com" },
+      }),
+    );
+    process.env.QURL_MCP_HTTP_CONFIG = httpConfigPath;
+
+    expect(getDefaultConfigPath()).not.toBe(httpConfigPath);
+    const runtime = loadRuntimeConfig();
+    expect(runtime.defaultQurlApiUrl).toBe("https://api.layerv.ai");
+    expect(runtime.smtp).toBeUndefined();
   });
 
   it("allows environment variables to override shared public video config", () => {
@@ -123,6 +145,16 @@ describe("public video config", () => {
     });
   });
 
+  it("rejects public video paths that collide with protocol routes", () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ publicVideo: { pagePath: "/mcp", filePath: "/srv/video.mp4" } }),
+    );
+
+    expect(() => loadRuntimeConfig(configPath)).toThrow("non-reserved absolute URL path");
+  });
+
   it("loads the qurl API key only from the environment", () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(
@@ -137,5 +169,20 @@ describe("public video config", () => {
     const config = loadRuntimeConfig(configPath);
 
     expect(config.qurlApiKey).toBe("env-key");
+  });
+
+  it("bounds upload memory and rejects unsafe service URLs", () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(configPath, JSON.stringify({ maxUploadFileDataBytes: "101mb" }));
+    expect(() => loadRuntimeConfig(configPath)).toThrow("must not exceed 100mb");
+
+    writeFileSync(configPath, JSON.stringify({ defaultQurlApiUrl: "http://api.example.com" }));
+    expect(() => loadRuntimeConfig(configPath)).toThrow("must use HTTPS");
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({ defaultQurlConnectorUrl: "https://connector.example.com?redirect=other" }),
+    );
+    expect(() => loadRuntimeConfig(configPath)).toThrow("must not contain credentials");
   });
 });

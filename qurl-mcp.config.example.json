@@ -9,7 +9,11 @@
     "username": "",
     "password": "",
     "fromEmail": "",
-    "fromName": "qURL"
+    "fromName": "qURL",
+    "allowedRecipients": [],
+    "allowedRecipientDomains": [],
+    "maxRecipientsPerMessage": 10,
+    "maxRecipientsPerHour": 100
   },
   "publicVideo": {
     "title": "Product Demo Video",

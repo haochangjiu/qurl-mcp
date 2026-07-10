@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createRequire } from "node:module";
-import { installTimestampedConsole } from "./logging.js";
+import { installTimestampedConsole, logInfo } from "./logging.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { MISSING_API_KEY_MESSAGE, QURLClient } from "./client.js";
 import { getDefaultConfigPath, inspectSmtpConfig, loadRuntimeConfig } from "./config.js";
@@ -29,11 +29,11 @@ if (!apiKey) {
 }
 const baseURL = runtimeConfig.defaultQurlApiUrl;
 const smtpInspection = inspectSmtpConfig(runtimeConfigPath);
-console.error("Runtime config loaded.");
+logInfo("Runtime config loaded.");
 if (smtpInspection.enabled) {
-  console.error("SMTP is configured.");
+  logInfo("SMTP is configured.");
 } else {
-  console.error(
+  logInfo(
     `SMTP is not configured. Missing fields: ${smtpInspection.missingFields.join(", ") || "(unknown)"}`,
   );
 }

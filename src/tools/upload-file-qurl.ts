@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
@@ -6,10 +6,13 @@ import { accessPolicySchema } from "./create-qurl.js";
 import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
 import {
   getConnectorConfig,
+  getMaxUploadFileBytes,
   inferContentType,
   normalizeFileName,
   supportedMimeTypes,
   uploadToConnector,
+  validateFileNameContentType,
+  validateFileSignature,
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 
@@ -17,10 +20,12 @@ export const uploadFileQurlSchema = z.object({
   file_path: z
     .string()
     .min(1)
+    .max(4096)
     .describe("Path to a local PDF or raster image file on the MCP server host"),
   file_name: z
     .string()
     .min(1)
+    .max(255)
     .optional()
     .describe("Optional override for the uploaded filename; defaults to the source basename"),
   content_type: z
@@ -63,7 +68,7 @@ export function uploadFileQurlTool(client: IQURLClient) {
       "Use this when the content already exists on the MCP server host and you need a shareable file qURL rather than a proxy to an existing website URL. " +
       "Use `create_qurl` when you already have a URL, and use `mint_link` when the file has already been uploaded and you only need another token. " +
       "The tool reads `file_path`, uploads the file to `${QURL_CONNECTOR_URL}/api/upload`, then mints a qURL from the returned `resource_id`. " +
-      "If `one_time_use` is omitted, the tool defaults it to `true` to match the file-distribution flow in `file-upload-distribution-design.md`. " +
+      "If `one_time_use` is omitted, the tool defaults it to `true` for safer file distribution. " +
       "Requires both `QURL_API_KEY` and `QURL_CONNECTOR_URL` in the server environment or runtime config. " +
       "**Returns:** `{ resource_id: string, qurl_id: string, qurl_link: string, qurl_site?: string, expires_at: string, file_name: string, content_type: string, size_bytes: number, branded_domain?: string, type?: string }`.",
     inputSchema: uploadFileQurlSchema,
@@ -88,7 +93,20 @@ export function uploadFileQurlTool(client: IQURLClient) {
         );
       }
 
+      validateFileNameContentType(fileName, contentType);
+
+      const maxBytes = getMaxUploadFileBytes();
+      const sourceStat = await stat(sourcePath);
+      if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
+      if (sourceStat.size > maxBytes) {
+        throw new Error("File exceeds the configured upload size limit.");
+      }
+
       const fileData = await readFile(sourcePath);
+      if (fileData.byteLength > maxBytes) {
+        throw new Error("File exceeds the configured upload size limit.");
+      }
+      validateFileSignature(fileData, contentType);
       const upload = await uploadToConnector(fileData, fileName, contentType);
 
       const mintInput = {

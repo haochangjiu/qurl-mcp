@@ -12,6 +12,7 @@ describe("uploadFileQurlTool", () => {
   const originalApiKey = process.env.QURL_API_KEY;
   const originalConnectorUrl = process.env.QURL_CONNECTOR_URL;
   const originalConfigPath = process.env.QURL_MCP_CONFIG;
+  const originalMaxUploadBytes = process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES;
   const originalFetch = globalThis.fetch;
   let tempDir: string | undefined;
 
@@ -20,6 +21,7 @@ describe("uploadFileQurlTool", () => {
     process.env.QURL_API_KEY = "lv_live_test";
     process.env.QURL_CONNECTOR_URL = "https://connector.test";
     delete process.env.QURL_MCP_CONFIG;
+    delete process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES;
     tempDir = mkdtempSync(join(tmpdir(), "qurl-upload-file-test-"));
   });
 
@@ -27,6 +29,7 @@ describe("uploadFileQurlTool", () => {
     process.env.QURL_API_KEY = originalApiKey;
     process.env.QURL_CONNECTOR_URL = originalConnectorUrl;
     process.env.QURL_MCP_CONFIG = originalConfigPath;
+    process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES = originalMaxUploadBytes;
     globalThis.fetch = originalFetch;
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true });
@@ -148,6 +151,17 @@ describe("uploadFileQurlTool", () => {
           },
         ],
       });
+    });
+
+    it("rejects local files that exceed the configured upload limit", async () => {
+      process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES = "16b";
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileQurlTool(makeMockClient());
+
+      await expect(tool.handler({ file_path: fixturePath })).rejects.toThrow(
+        "File exceeds the configured upload size limit",
+      );
+      expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 
     it("throws a typed error when the connector upload fails", async () => {

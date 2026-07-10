@@ -13,6 +13,10 @@ function formatTimestamp(date = new Date()): string {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
+export function logInfo(message: string): void {
+  process.stderr.write(`${formatTimestamp()} ${message}\n`);
+}
+
 function prefixArgs(args: unknown[]): unknown[] {
   const prefix = `${formatTimestamp()} `;
   if (args.length === 0) {

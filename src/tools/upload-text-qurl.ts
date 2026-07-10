@@ -19,13 +19,14 @@ export const uploadTextQurlSchema = z.object({
   content: z
     .string()
     .min(1)
-    .max(1_000_000)
+    .max(100_000)
     .describe(
       "Text content to render into a temporary PDF before uploading to the qURL connector.",
     ),
   file_name: z
     .string()
     .min(1)
+    .max(255)
     .optional()
     .describe(
       "Filename to register with the connector. The tool will normalize it to a `.pdf` filename.",
@@ -146,8 +147,12 @@ export function uploadTextQurlTool(client: IQURLClient) {
       } finally {
         try {
           await pdfFile.cleanup();
-        } catch {
+        } catch (error) {
           // Cleanup is best-effort and must not turn a successful upload into a tool failure.
+          console.error(
+            "Failed to clean up a temporary text PDF:",
+            error instanceof Error ? error.message : "UnknownError",
+          );
         }
       }
     }),

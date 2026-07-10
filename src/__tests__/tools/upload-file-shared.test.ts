@@ -18,4 +18,16 @@ describe("getConnectorUploadUrl", () => {
       "must not contain embedded credentials",
     );
   });
+
+  it("preserves an operator-configured base path and rejects query or fragment suffixes", () => {
+    expect(getConnectorUploadUrl("https://connector.example.com/qurl")).toBe(
+      "https://connector.example.com/qurl/api/upload",
+    );
+    expect(() => getConnectorUploadUrl("https://connector.example.com?target=other")).toThrow(
+      "must not contain a query string or fragment",
+    );
+    expect(() => getConnectorUploadUrl("https://connector.example.com/#other")).toThrow(
+      "must not contain a query string or fragment",
+    );
+  });
 });

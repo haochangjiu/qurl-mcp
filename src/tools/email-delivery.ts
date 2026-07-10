@@ -6,11 +6,14 @@ export const emailDeliveryInputSchema = z.object({
   to: z
     .array(z.string().email())
     .min(1)
-    .max(50)
-    .describe("One or more recipient email addresses for the notification email."),
+    .max(100)
+    .describe(
+      "One or more recipient email addresses. The server's SMTP recipient policy may enforce a lower limit.",
+    ),
   subject: z
     .string()
     .max(200)
+    .refine((subject) => !/[\r\n]/.test(subject), "Subject must be a single line.")
     .optional()
     .describe("Optional email subject. Defaults to a tool-specific subject when omitted."),
   message: z

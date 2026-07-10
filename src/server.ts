@@ -68,14 +68,14 @@ export const toolFactories = [
   uploadFileQurlTool,
   uploadFileDataQurlTool,
   uploadTextQurlTool,
-];
+] satisfies ToolFactory[];
 
 export function getToolFactoriesForMode(mode: ServerMode): ToolFactory[] {
-  if (mode === "http") {
-    return [...sharedToolFactories, uploadFileDataQurlTool, uploadTextQurlTool];
-  }
-
-  return [...sharedToolFactories, uploadFileQurlTool];
+  return toolFactories.filter((factory) =>
+    mode === "http"
+      ? factory !== uploadFileQurlTool
+      : factory !== uploadFileDataQurlTool && factory !== uploadTextQurlTool,
+  );
 }
 
 export function createServer(

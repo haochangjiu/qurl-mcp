@@ -1,8 +1,16 @@
 import { Buffer } from "node:buffer";
 import { basename, extname } from "node:path";
-import { getRequestQurlApiKey, getRequestQurlConnectorUrl } from "../auth/request-context.js";
+import {
+  getRequestMaxUploadFileDataBytes,
+  getRequestQurlApiKey,
+  getRequestQurlConnectorUrl,
+} from "../auth/request-context.js";
 import { MISSING_API_KEY_MESSAGE, QURLAPIError } from "../client.js";
-import { loadRuntimeConfig } from "../config.js";
+import {
+  DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
+  loadRuntimeConfig,
+  parseSizeBytes,
+} from "../config.js";
 
 export const supportedMimeTypes = [
   "application/pdf",
@@ -66,9 +74,9 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 export function getConnectorUploadUrl(connectorURL: string): string {
-  let uploadUrl: URL;
+  let connectorBaseUrl: URL;
   try {
-    uploadUrl = new URL(`${connectorURL.replace(/\/$/, "")}/api/upload`);
+    connectorBaseUrl = new URL(connectorURL);
   } catch {
     throw new QURLAPIError(
       0,
@@ -77,16 +85,23 @@ export function getConnectorUploadUrl(connectorURL: string): string {
     );
   }
 
-  if (uploadUrl.username || uploadUrl.password) {
+  if (connectorBaseUrl.username || connectorBaseUrl.password) {
     throw new QURLAPIError(
       0,
       "invalid_connector_url",
       "QURL_CONNECTOR_URL must not contain embedded credentials.",
     );
   }
+  if (connectorBaseUrl.search || connectorBaseUrl.hash) {
+    throw new QURLAPIError(
+      0,
+      "invalid_connector_url",
+      "QURL_CONNECTOR_URL must not contain a query string or fragment.",
+    );
+  }
   if (
-    uploadUrl.protocol !== "https:" &&
-    !(uploadUrl.protocol === "http:" && isLoopbackHostname(uploadUrl.hostname))
+    connectorBaseUrl.protocol !== "https:" &&
+    !(connectorBaseUrl.protocol === "http:" && isLoopbackHostname(connectorBaseUrl.hostname))
   ) {
     throw new QURLAPIError(
       0,
@@ -95,19 +110,71 @@ export function getConnectorUploadUrl(connectorURL: string): string {
     );
   }
 
-  return uploadUrl.toString();
+  connectorBaseUrl.pathname = `${connectorBaseUrl.pathname.replace(/\/$/, "")}/api/upload`;
+  return connectorBaseUrl.toString();
 }
 
 export function normalizeFileName(input: string) {
-  const name = basename(input).trim();
-  if (!name) {
+  const name = basename(input.replaceAll("\\", "/")).trim();
+  if (!name || name === "." || name === "..") {
     throw new Error("file_name must not be empty");
+  }
+  const hasControlCharacter = [...name].some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
+  if (name.length > 255 || hasControlCharacter) {
+    throw new Error("file_name must be at most 255 characters and contain no control characters");
   }
   return name;
 }
 
 export function inferContentType(filePath: string) {
   return mimeTypeByExtension.get(extname(filePath).toLowerCase());
+}
+
+export function getMaxUploadFileBytes(): number {
+  const requestScoped = getRequestMaxUploadFileDataBytes();
+  if (requestScoped) return requestScoped;
+  if (process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES) {
+    return parseSizeBytes(
+      process.env.MCP_MAX_UPLOAD_FILE_DATA_BYTES,
+      DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
+      "MCP_MAX_UPLOAD_FILE_DATA_BYTES",
+    );
+  }
+  return loadRuntimeConfig().maxUploadFileDataBytes;
+}
+
+export function validateFileNameContentType(fileName: string, contentType: string): void {
+  const inferred = inferContentType(fileName);
+  if (inferred && inferred !== contentType) {
+    throw new Error(`content_type ${contentType} does not match the filename extension.`);
+  }
+}
+
+export function validateFileSignature(fileData: Uint8Array, contentType: string): void {
+  const bytes = Buffer.from(fileData);
+  const ascii = (start: number, end: number) => bytes.subarray(start, end).toString("ascii");
+  const valid =
+    (contentType === "application/pdf" &&
+      ascii(0, Math.min(bytes.length, 1024)).includes("%PDF-")) ||
+    (contentType === "image/png" &&
+      bytes.length >= 8 &&
+      bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+    (contentType === "image/jpeg" &&
+      bytes.length >= 3 &&
+      bytes[0] === 0xff &&
+      bytes[1] === 0xd8 &&
+      bytes[2] === 0xff) ||
+    (contentType === "image/gif" && ["GIF87a", "GIF89a"].includes(ascii(0, 6))) ||
+    (contentType === "image/webp" &&
+      bytes.length >= 12 &&
+      ascii(0, 4) === "RIFF" &&
+      ascii(8, 12) === "WEBP");
+  if (!valid) {
+    throw new Error(`File content does not match declared content_type ${contentType}.`);
+  }
 }
 
 /**
@@ -185,7 +252,11 @@ function extractResourceId(parsed: unknown): string | undefined {
   }
 
   // Direct shape: { resource_id: string }
-  if ("resource_id" in parsed && typeof parsed.resource_id === "string") {
+  if (
+    "resource_id" in parsed &&
+    typeof parsed.resource_id === "string" &&
+    /^r_[a-z0-9_-]{11}$/.test(parsed.resource_id)
+  ) {
     return parsed.resource_id;
   }
 
@@ -195,12 +266,35 @@ function extractResourceId(parsed: unknown): string | undefined {
     typeof parsed.data === "object" &&
     parsed.data !== null &&
     "resource_id" in parsed.data &&
-    typeof parsed.data.resource_id === "string"
+    typeof parsed.data.resource_id === "string" &&
+    /^r_[a-z0-9_-]{11}$/.test(parsed.data.resource_id)
   ) {
     return parsed.data.resource_id;
   }
 
   return undefined;
+}
+
+async function readConnectorResponseBody(response: Response): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > 64 * 1024) {
+      await reader.cancel();
+      throw new QURLAPIError(
+        0,
+        "connector_response_too_large",
+        "Connector response exceeded the 64 KiB limit.",
+      );
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
@@ -209,7 +303,7 @@ function extractResourceId(parsed: unknown): string | undefined {
  */
 async function processConnectorResponse(response: Response): Promise<ConnectorUploadResponse> {
   const requestId = response.headers.get("x-request-id") ?? undefined;
-  const raw = await response.text();
+  const raw = await readConnectorResponseBody(response);
   const parsed = parseJsonBody(raw);
 
   if (!response.ok) {
@@ -231,6 +325,27 @@ async function processConnectorResponse(response: Response): Promise<ConnectorUp
   return { resource_id: resourceId };
 }
 
+async function fetchConnector(
+  uploadUrl: string,
+  init: NonNullable<Parameters<typeof fetch>[1]>,
+): Promise<Response> {
+  try {
+    return await fetch(uploadUrl, { ...init, signal: globalThis.AbortSignal.timeout(60_000) });
+  } catch (error) {
+    const code =
+      error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name)
+        ? "connector_timeout"
+        : "connector_unreachable";
+    throw new QURLAPIError(
+      0,
+      code,
+      code === "connector_timeout"
+        ? "Connector upload timed out."
+        : "Connector upload request failed.",
+    );
+  }
+}
+
 export async function uploadToConnector(
   fileData: Uint8Array,
   fileName: string,
@@ -247,7 +362,7 @@ export async function uploadToConnector(
   );
 
   // lgtm[js/file-access-to-http] The validated destination and upload are the explicit behavior of this MCP tool.
-  const response = await fetch(uploadUrl, {
+  const response = await fetchConnector(uploadUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -274,7 +389,7 @@ export async function uploadJsonToConnector(
   const uploadUrl = getConnectorUploadUrl(connectorURL);
   const body = JSON.stringify(payload); // lgtm[js/file-access-to-http] Explicit connector upload payload.
   // lgtm[js/file-access-to-http] The validated destination and upload are the explicit behavior of this MCP tool.
-  const response = await fetch(uploadUrl, {
+  const response = await fetchConnector(uploadUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

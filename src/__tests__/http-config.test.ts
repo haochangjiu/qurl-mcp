@@ -32,7 +32,9 @@ describe("HTTP listener config", () => {
         port: 3000,
         trustProxyHops: 0,
         maxSessions: 1000,
+        maxUnvalidatedSessions: 100,
         sessionIdleTtlMs: 900_000,
+        unvalidatedSessionTtlMs: 60_000,
         mcpRateLimitPerMinute: 120,
       }),
     );
@@ -61,7 +63,9 @@ describe("HTTP listener config", () => {
       JSON.stringify({
         trustProxyHops: 1,
         maxSessions: 50,
+        maxUnvalidatedSessions: 20,
         sessionIdleTtlMs: 60_000,
+        unvalidatedSessionTtlMs: 20_000,
         mcpRateLimitPerMinute: 30,
         publicFileRateLimitPerMinute: 40,
       }),
@@ -71,7 +75,9 @@ describe("HTTP listener config", () => {
       expect.objectContaining({
         trustProxyHops: 1,
         maxSessions: 50,
+        maxUnvalidatedSessions: 20,
         sessionIdleTtlMs: 60_000,
+        unvalidatedSessionTtlMs: 20_000,
         mcpRateLimitPerMinute: 30,
         publicFileRateLimitPerMinute: 40,
       }),

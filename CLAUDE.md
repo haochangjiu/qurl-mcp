@@ -47,7 +47,7 @@ Follow this process for all code changes:
 
 ## Project Overview
 
-qURL MCP Server is a TypeScript [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes qURL operations as tools for AI agents. It uses stdio transport and communicates with the qURL API.
+qURL MCP Server is a TypeScript [Model Context Protocol](https://modelcontextprotocol.io/) server that exposes qURL operations as tools for AI agents. It supports local stdio and authenticated Streamable HTTP transports, and communicates with the qURL API plus an optional upload connector.
 
 ## Architecture
 
@@ -55,6 +55,9 @@ qURL MCP Server is a TypeScript [Model Context Protocol](https://modelcontextpro
 qurl-mcp/
 ├── src/
 │   ├── index.ts           # Entry point, env validation, stdio transport
+│   ├── http.ts            # Authenticated HTTP transport and public routes
+│   ├── http-config.ts     # Bounded listener/session/proxy configuration
+│   ├── config.ts          # Shared qURL, connector, SMTP, and media config
 │   ├── server.ts          # MCP server factory, tool/resource/prompt registration
 │   ├── client.ts          # Adapter over the @layervai/qurl SDK (IQURLClient + QURLAPIError)
 │   ├── tools/
@@ -67,7 +70,10 @@ qurl-mcp/
 │   │   ├── extend-qurl.ts
 │   │   ├── update-qurl.ts
 │   │   ├── mint-link.ts
-│   │   └── batch-create.ts
+│   │   ├── batch-create.ts
+│   │   └── upload-*.ts    # File/data/text upload workflows
+│   ├── auth/              # Request-scoped credentials and bearer verification
+│   ├── services/          # Email, PDF, legal-page, and video-page services
 │   ├── resources/
 │   │   ├── links.ts
 │   │   └── usage.ts
@@ -108,6 +114,12 @@ npm run format
 |----------|----------|-------------|---------|
 | `QURL_API_KEY` | Yes | API key with `qurl:read`, `qurl:write`, and/or `qurl:resolve` scopes | — |
 | `QURL_API_URL` | No | qURL API base URL | `https://api.layerv.ai` |
+| `QURL_CONNECTOR_URL` | Uploads | HTTPS connector base URL | — |
+| `QURL_MCP_CONFIG` | No | Shared runtime config path | `qurl-mcp.config.json` |
+| `QURL_MCP_HTTP_CONFIG` | HTTP only | HTTP listener config path | `qurl-mcp.http.json` |
+
+See `README.md` and the two tracked `*.example.json` files for the complete
+SMTP, upload-limit, proxy, session, and public-page settings.
 
 ## MCP Usage
 
@@ -178,6 +190,7 @@ feat(tools)!: rename resolve_qurl to resolve tool
 | `client` | API client |
 | `resources` | MCP resources |
 | `prompts` | MCP prompts |
+| `http` | HTTP transport, public routes, and remote-server lifecycle |
 | `ci` | GitHub Actions workflows |
 | `deps` | Dependencies |
 
@@ -216,7 +229,7 @@ The repository includes an API spec drift detection system:
 ## Smithery
 
 - **Manifest:** `smithery.yaml`. Powers smithery.ai's auto-detect import flow.
-- **Hand-synced:** `configSchema` is kept in sync with `server.json.environmentVariables` by hand. Adding or renaming an env var means updating both manifests; there's no automated sync.
+- **Hand-synced:** `configSchema` is kept in sync with `server.json.environmentVariables` by hand. Adding or renaming a shared/stdio env var means updating both manifests; there's no automated sync. HTTP-only listener variables do not belong in either manifest because both publish the stdio transport.
 - **Default URLs duplicated:** `https://api.layerv.ai` appears in four places — `smithery.yaml`'s schema default, the `commandFunction` fallback, `server.json`'s `environmentVariables[].default`, and `src/index.ts` runtime default. If the production URL ever moves, all four move in lockstep. The duplication is deliberate (defense-in-depth against consumers that don't apply JSON Schema defaults).
 
 ## Security Notes

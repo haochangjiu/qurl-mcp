@@ -5,13 +5,9 @@ import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const fallbackFontCandidates = [
-  fileURLToPath(new URL("../../assets/fonts/NotoSansSC-VF.ttf", import.meta.url)),
-  "C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
-  "C:\\Windows\\Fonts\\msyh.ttc",
-  "C:\\Windows\\Fonts\\simhei.ttf",
-  "C:\\Windows\\Fonts\\simsun.ttc",
-] as const;
+const bundledFontPath = fileURLToPath(
+  new URL("../../assets/fonts/NotoSansSC-VF.ttf", import.meta.url),
+);
 
 function ensurePdfFileName(input: string | undefined): string {
   const baseName = basename((input ?? "content").trim()) || "content";
@@ -21,13 +17,7 @@ function ensurePdfFileName(input: string | undefined): string {
 }
 
 function resolveFontPath(): string | undefined {
-  for (const candidate of fallbackFontCandidates) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return undefined;
+  return existsSync(bundledFontPath) ? bundledFontPath : undefined;
 }
 
 export async function createTextPdfTempFile(input: {

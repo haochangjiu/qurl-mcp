@@ -44,6 +44,7 @@ vi.mock("@layervai/qurl", async (importOriginal) => {
 });
 
 import { QURLClient, QURLAPIError, MISSING_API_KEY_MESSAGE } from "../client.js";
+import { runWithRequestAuthContext } from "../auth/request-context.js";
 import { NotFoundError, AuthorizationError, NetworkError } from "@layervai/qurl";
 
 const newClient = (apiKey = "lv_live_key", baseURL = "https://api.test.layerv.ai") =>
@@ -87,6 +88,18 @@ describe("QURLClient adapter", () => {
         apiKey: "lv_live_key",
         baseUrl: "https://api.test.layerv.ai",
       });
+    });
+
+    it("marks the request credential validated after a downstream API success", async () => {
+      sdk.get.mockResolvedValue({ resource_id: "r_x" });
+      let credentialValidated = false;
+
+      await runWithRequestAuthContext(
+        { markCredentialValidated: () => (credentialValidated = true) },
+        () => newClient().getQURL("r_x"),
+      );
+
+      expect(credentialValidated).toBe(true);
     });
   });
 

@@ -10,6 +10,7 @@
  */
 
 import { QURLClient as SDKQURLClient, QURLError } from "@layervai/qurl";
+import { markRequestCredentialValidated } from "./auth/request-context.js";
 import type {
   QURL as SDKQURL,
   Resource as SDKResource,
@@ -465,9 +466,18 @@ export class QURLClient implements IQURLClient {
   /** Run an SDK call, translating its errors into `QURLAPIError`. */
   private async call<T>(fn: (sdk: SDKQURLClient) => Promise<T>): Promise<T> {
     try {
-      return await fn(this.sdk);
+      const result = await fn(this.sdk);
+      markRequestCredentialValidated();
+      return result;
     } catch (err) {
-      throw translateError(err);
+      const translated = translateError(err);
+      // Authorization/ownership failures still prove that the downstream API
+      // recognized the credential. A 401 does not, and network/5xx failures
+      // are deliberately inconclusive.
+      if (translated instanceof QURLAPIError && [403, 404].includes(translated.statusCode)) {
+        markRequestCredentialValidated();
+      }
+      throw translated;
     }
   }
 

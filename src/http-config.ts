@@ -15,7 +15,9 @@ export interface HttpServerConfig {
   allowedHosts?: string[];
   trustProxyHops: number;
   maxSessions: number;
+  maxUnvalidatedSessions: number;
   sessionIdleTtlMs: number;
+  unvalidatedSessionTtlMs: number;
   mcpRateLimitPerMinute: number;
   publicFileRateLimitPerMinute: number;
   maxUploadFileDataBytes: number;
@@ -27,7 +29,9 @@ export interface HttpServerConfig {
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_MAX_SESSIONS = 1000;
+const DEFAULT_MAX_UNVALIDATED_SESSIONS = 100;
 const DEFAULT_SESSION_IDLE_TTL_MS = 15 * 60 * 1000;
+const DEFAULT_UNVALIDATED_SESSION_TTL_MS = 60 * 1000;
 
 function parseBoundedInteger(
   value: unknown,
@@ -167,12 +171,26 @@ export function loadHttpServerConfig(configPath = getDefaultHttpConfigPath()): H
       1,
       10_000,
     ),
+    maxUnvalidatedSessions: parseBoundedInteger(
+      process.env.MCP_MAX_UNVALIDATED_SESSIONS ?? fileConfig.maxUnvalidatedSessions,
+      DEFAULT_MAX_UNVALIDATED_SESSIONS,
+      "MCP_MAX_UNVALIDATED_SESSIONS/maxUnvalidatedSessions",
+      1,
+      1000,
+    ),
     sessionIdleTtlMs: parseBoundedInteger(
       process.env.MCP_SESSION_IDLE_TTL_MS ?? fileConfig.sessionIdleTtlMs,
       DEFAULT_SESSION_IDLE_TTL_MS,
       "MCP_SESSION_IDLE_TTL_MS/sessionIdleTtlMs",
       10_000,
       24 * 60 * 60 * 1000,
+    ),
+    unvalidatedSessionTtlMs: parseBoundedInteger(
+      process.env.MCP_UNVALIDATED_SESSION_TTL_MS ?? fileConfig.unvalidatedSessionTtlMs,
+      DEFAULT_UNVALIDATED_SESSION_TTL_MS,
+      "MCP_UNVALIDATED_SESSION_TTL_MS/unvalidatedSessionTtlMs",
+      10_000,
+      5 * 60 * 1000,
     ),
     mcpRateLimitPerMinute: parseBoundedInteger(
       process.env.MCP_RATE_LIMIT_PER_MINUTE ?? fileConfig.mcpRateLimitPerMinute,

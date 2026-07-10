@@ -39,6 +39,7 @@ type SessionContext = {
   bearerTokenDigest: Buffer;
   lastActivityAt: number;
   activeRequests: number;
+  credentialValidated: boolean;
 };
 
 const configPath = getDefaultHttpConfigPath();
@@ -108,10 +109,12 @@ async function closeSession(sessionId: string): Promise<void> {
 
 export async function sweepExpiredSessions(now = Date.now()): Promise<number> {
   const expiredIds = [...sessions.values()]
-    .filter(
-      (session) =>
-        session.activeRequests === 0 && now - session.lastActivityAt >= config.sessionIdleTtlMs,
-    )
+    .filter((session) => {
+      const ttlMs = session.credentialValidated
+        ? config.sessionIdleTtlMs
+        : config.unvalidatedSessionTtlMs;
+      return session.activeRequests === 0 && now - session.lastActivityAt >= ttlMs;
+    })
     .map((session) => session.sessionId);
   await Promise.all(expiredIds.map((sessionId) => closeSession(sessionId)));
   return expiredIds.length;
@@ -296,6 +299,12 @@ function withRequestAuth<T>(
       qurlApiKey,
       qurlConnectorUrl: defaultQurlConnectorUrl,
       maxUploadFileDataBytes: config.maxUploadFileDataBytes,
+      markCredentialValidated: sessionId
+        ? () => {
+            const session = sessions.get(sessionId);
+            if (session) session.credentialValidated = true;
+          }
+        : undefined,
     },
     fn,
   );
@@ -318,6 +327,17 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, parseMcpJsonBody, async (
       await sweepExpiredSessions();
       if (sessions.size >= config.maxSessions) {
         rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
+        return;
+      }
+      const unvalidatedSessionCount = [...sessions.values()].filter(
+        (session) => !session.credentialValidated,
+      ).length;
+      if (unvalidatedSessionCount >= config.maxUnvalidatedSessions) {
+        rejectJsonRpc(
+          res,
+          503,
+          "The pending MCP credential-validation limit has been reached. Try again later.",
+        );
         return;
       }
 
@@ -372,6 +392,7 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, parseMcpJsonBody, async (
         bearerTokenDigest: digestBearerToken(bearerToken),
         lastActivityAt: Date.now(),
         activeRequests: 0,
+        credentialValidated: false,
       });
       logInfo(`[mcp-http] initialize completed elapsed=${formatDurationMs(startedAt)}`);
       return;
@@ -385,7 +406,7 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, parseMcpJsonBody, async (
     }
     if (!bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
       console.warn("[mcp-http] rejected request from a different bearer token");
-      rejectJsonRpc(res, 403, "This session belongs to a different bearer token.");
+      rejectJsonRpc(res, 404, REINITIALIZE_MESSAGE);
       return;
     }
 
@@ -422,7 +443,7 @@ app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
     return;
   }
   if (!bearerToken || !bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
-    res.status(403).send("This session belongs to a different bearer token.");
+    res.status(404).send(REINITIALIZE_MESSAGE);
     return;
   }
 
@@ -455,7 +476,7 @@ app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
     return;
   }
   if (!bearerToken || !bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
-    res.status(403).send("This session belongs to a different bearer token.");
+    res.status(404).send(REINITIALIZE_MESSAGE);
     return;
   }
 

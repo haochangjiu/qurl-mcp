@@ -48,7 +48,9 @@ export type ConfigFileShape = Partial<{
   allowedHosts: string[];
   trustProxyHops: number;
   maxSessions: number;
+  maxUnvalidatedSessions: number;
   sessionIdleTtlMs: number;
+  unvalidatedSessionTtlMs: number;
   mcpRateLimitPerMinute: number;
   publicFileRateLimitPerMinute: number;
   maxUploadFileDataBytes: string | number;

@@ -5,6 +5,7 @@ export interface RequestAuthContext {
   qurlConnectorUrl?: string;
   maxUploadFileDataBytes?: number;
   sessionId?: string;
+  markCredentialValidated?: () => void;
 }
 
 const requestAuthStorage = new AsyncLocalStorage<RequestAuthContext>();
@@ -34,4 +35,8 @@ export function getRequestMaxUploadFileDataBytes(): number | undefined {
 export function getRequestSessionId(): string | undefined {
   const sessionId = requestAuthStorage.getStore()?.sessionId?.trim();
   return sessionId ? sessionId : undefined;
+}
+
+export function markRequestCredentialValidated(): void {
+  requestAuthStorage.getStore()?.markCredentialValidated?.();
 }

@@ -122,7 +122,7 @@ describe("HTTP MCP server", () => {
       headers: { ...bearerHeaders("lv_live_other"), "mcp-session-id": sessionId },
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
     });
-    expect(rejected.status).toBe(403);
+    expect(rejected.status).toBe(404);
 
     const initialized = await fetch(`${baseUrl}/mcp`, {
       method: "POST",

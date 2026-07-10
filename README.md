@@ -159,7 +159,7 @@ client request supplies its own qURL API key as a bearer token.
 | `smtp.allowedRecipients` | Optional exact-address allowlist |
 | `smtp.allowedRecipientDomains` | Optional domain allowlist |
 | `smtp.maxRecipientsPerMessage` | Per-message recipient cap (default `10`) |
-| `smtp.maxRecipientsPerHour` | Per-qURL-key rolling hourly recipient cap (default `100`) |
+| `smtp.maxRecipientsPerHour` | Per-qURL-key rolling hourly attempted-recipient cap (default `100`) |
 
 These settings are used when email delivery is requested by tools such as:
 
@@ -171,7 +171,8 @@ These settings are used when email delivery is requested by tools such as:
 If either recipient allowlist is configured, only an exact address or domain
 match is delivered. If both are empty, the message and hourly caps still apply.
 The SMTP transport uses bounded connection/socket timeouts and is closed after
-each delivery batch.
+each delivery batch. Failed SMTP attempts still consume quota so repeated
+failures cannot bypass the abuse limit.
 
 Prefer environment variables for SMTP credentials and policy:
 `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, `QURL_SMTP_FROM_EMAIL`,
@@ -202,7 +203,9 @@ When configured, the HTTP server additionally exposes:
 | `allowedHosts` | Host allowlist for Host header validation |
 | `trustProxyHops` | Exact trusted reverse-proxy hop count (default `0`) |
 | `maxSessions` | Hard cap on live MCP sessions (default `1000`) |
+| `maxUnvalidatedSessions` | Cap on sessions that have not completed a downstream qURL API call (default `100`) |
 | `sessionIdleTtlMs` | Idle session eviction window (default 15 minutes) |
+| `unvalidatedSessionTtlMs` | Short idle window for never-validated bearer sessions (default 1 minute) |
 | `mcpRateLimitPerMinute` | Per-client `/mcp` request limit (default `120`) |
 | `publicFileRateLimitPerMinute` | Per-client video-stream request limit (default `300`) |
 
@@ -210,6 +213,10 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 `allowedHosts` is explicitly configured. Set `trustProxyHops` (or
 `MCP_TRUST_PROXY_HOPS`) to the exact number of trusted proxy hops; leave it at
 `0` for direct connections so forwarded IP headers cannot spoof rate-limit keys.
+Bearer credentials are conclusively validated by the first downstream qURL API
+call. Until then, sessions use the smaller pending-session cap and one-minute
+idle window, so arbitrary non-empty bearer strings cannot occupy the full
+session pool for the normal 15-minute TTL.
 
 ## Configuration Priority
 
@@ -223,6 +230,10 @@ The following environment variables independently override the config file paths
 
 `QURL_MCP_HTTP_CONFIG` never replaces the shared runtime config path. This keeps
 listener settings from silently shadowing SMTP, connector, or API settings.
+
+`server.json` and `smithery.yaml` describe the published stdio transport, so
+they include shared upload/SMTP settings but intentionally omit HTTP-only
+listener variables such as `QURL_MCP_HTTP_CONFIG` and `MCP_MAX_SESSIONS`.
 
 Do not commit API keys, SMTP credentials, or private file-system paths.
 

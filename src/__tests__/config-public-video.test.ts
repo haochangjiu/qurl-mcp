@@ -128,6 +128,28 @@ describe("public video config", () => {
     expect(() => loadRuntimeConfig(configPath)).toThrow("publicVideo must be a JSON object");
   });
 
+  it("rejects invalid SMTP quota values instead of silently using defaults", () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        smtp: {
+          host: "smtp.example.com",
+          port: 587,
+          secure: false,
+          username: "mailer",
+          password: "secret",
+          fromEmail: "noreply@example.com",
+          maxRecipientsPerMessage: "invalid",
+        },
+      }),
+    );
+
+    expect(() => loadRuntimeConfig(configPath)).toThrow(
+      "SMTP maxRecipientsPerMessage must be a positive integer",
+    );
+  });
+
   it("allows environment variables to override shared public video config", () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(

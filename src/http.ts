@@ -656,7 +656,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   };
 
   function getInlineStyleSources(html: string): string[] {
-    return [...html.matchAll(/<style>([\s\S]*?)<\/style>/gi)].map(
+    return [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map(
       (match) => `'sha256-${createHash("sha256").update(match[1], "utf8").digest("base64")}'`,
     );
   }

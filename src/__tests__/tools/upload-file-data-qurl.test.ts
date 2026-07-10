@@ -87,6 +87,28 @@ describe("uploadFileDataQurlTool", () => {
       expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 
+    it("does not follow connector redirect responses", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response("", {
+          status: 302,
+          headers: { location: "http://169.254.169.254/latest/meta-data" },
+        }),
+      );
+      const tool = uploadFileDataQurlTool(makeMockClient());
+
+      await expect(
+        tool.handler({
+          file_base64: fixtureBase64,
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toMatchObject<QURLAPIError>({ statusCode: 302 });
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "https://connector.test/api/upload",
+        expect.objectContaining({ redirect: "error" }),
+      );
+    });
+
     it("uploads base64 file data, mints a qURL, and returns a structured result", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ resource_id: "r_upload12345" }), {

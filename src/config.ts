@@ -215,7 +215,7 @@ function parseBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
-function parsePositiveInteger(value: unknown): number | undefined {
+function parsePositiveInteger(value: unknown, fieldName: string): number | undefined {
   if (value === undefined) return undefined;
   const parsed =
     typeof value === "number"
@@ -223,13 +223,15 @@ function parsePositiveInteger(value: unknown): number | undefined {
       : typeof value === "string"
         ? Number(value.trim())
         : Number.NaN;
-  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldName} must be a positive integer.`);
+  }
   return parsed;
 }
 
 function parseSmtpPort(value: unknown): number | undefined {
   if (value === undefined) return undefined;
-  const port = parsePositiveInteger(value);
+  const port = parsePositiveInteger(value, "SMTP port");
   if (port === undefined || port > 65_535) {
     throw new Error("SMTP port must be an integer between 1 and 65535.");
   }
@@ -383,10 +385,12 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
   const maxRecipientsPerMessage =
     parsePositiveInteger(
       process.env.QURL_SMTP_MAX_RECIPIENTS_PER_MESSAGE ?? fileConfig?.maxRecipientsPerMessage,
+      "SMTP maxRecipientsPerMessage",
     ) ?? 10;
   const maxRecipientsPerHour =
     parsePositiveInteger(
       process.env.QURL_SMTP_MAX_RECIPIENTS_PER_HOUR ?? fileConfig?.maxRecipientsPerHour,
+      "SMTP maxRecipientsPerHour",
     ) ?? 100;
   if (maxRecipientsPerMessage > 100 || maxRecipientsPerHour > 100_000) {
     throw new Error("SMTP recipient limits are unreasonably high.");

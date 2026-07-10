@@ -175,10 +175,11 @@ export function uploadFileQurlTool(
       openWorldHint: true,
     },
     handler: withMissingApiKeyHandler(async (input: UploadFileQurlInput) => {
-      const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
+      const allowServerApiKeyFallback = allowsServerApiKeyFallback(runtime);
+      const connectorConfig = getConnectorConfig(allowServerApiKeyFallback);
       const result = await uploadLocalFileAndMint(client, input, connectorConfig);
       const emailResult = await maybeDeliverToolEmail({
-        allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
+        allowServerApiKeyFallback,
         delivery: input.email_delivery,
         defaultSubject: "Your secure file access link is ready",
         detailLines: uploadEmailDetailLines({

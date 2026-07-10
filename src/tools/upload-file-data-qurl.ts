@@ -190,8 +190,9 @@ export function uploadFileDataQurlTool(
       openWorldHint: true,
     },
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadFileDataQurlSchema>) => {
+      const allowServerApiKeyFallback = allowsServerApiKeyFallback(runtime);
       // Preflight connector config before decoding payloads so auth/config errors fail fast.
-      const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
+      const connectorConfig = getConnectorConfig(allowServerApiKeyFallback);
 
       const fileName = normalizeFileName(input.file_name);
       validateFileNameContentType(fileName, input.content_type);
@@ -220,7 +221,7 @@ export function uploadFileDataQurlTool(
       );
 
       const emailResult = await maybeDeliverToolEmail({
-        allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
+        allowServerApiKeyFallback,
         delivery: input.email_delivery,
         defaultSubject: "Your secure file access link is ready",
         detailLines: uploadEmailDetailLines({

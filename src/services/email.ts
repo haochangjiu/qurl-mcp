@@ -185,6 +185,10 @@ export async function sendEmailMessage(
       "Request-scoped qURL credentials are unavailable for email quota tracking.",
     );
   }
+  // Registered tools reject a missing qURL key before reaching delivery. The
+  // fallback bucket exists only for direct service embedding/tests, where no
+  // credential principal is available and sharing one conservative quota is
+  // safer than disabling quota enforcement.
   const principalKey = requestApiKey ?? runtimeConfig.qurlApiKey ?? "unscoped";
   const principal = await deriveEmailQuotaPrincipal(principalKey);
   const now = Date.now();

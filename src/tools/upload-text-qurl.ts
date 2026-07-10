@@ -75,9 +75,10 @@ export function uploadTextQurlTool(
       openWorldHint: true,
     },
     handler: withMissingApiKeyHandler(async (input: z.infer<typeof uploadTextQurlSchema>) => {
+      const allowServerApiKeyFallback = allowsServerApiKeyFallback(runtime);
       const requestedFileName = input.file_name ?? "content.pdf";
 
-      const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
+      const connectorConfig = getConnectorConfig(allowServerApiKeyFallback);
 
       const pdfFile = await createTextPdfTempFile({
         content: input.content,
@@ -103,7 +104,7 @@ export function uploadTextQurlTool(
         );
 
         const emailResult = await maybeDeliverToolEmail({
-          allowServerApiKeyFallback: allowsServerApiKeyFallback(runtime),
+          allowServerApiKeyFallback,
           delivery: input.email_delivery,
           defaultSubject: "Your secure text access link is ready",
           detailLines: uploadEmailDetailLines({

@@ -1,4 +1,5 @@
-import { randomBytes, scrypt } from "node:crypto";
+import { Buffer } from "node:buffer";
+import { hkdf, randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getRequestQurlApiKey } from "../auth/request-context.js";
 import { loadRuntimeConfig } from "../config.js";
@@ -21,12 +22,15 @@ export function clearEmailQuotaState(): void {
 
 async function deriveEmailQuotaPrincipal(principalKey: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    scrypt(principalKey, EMAIL_QUOTA_SALT, 32, (error, derivedKey) => {
+    // qURL API keys are high-entropy credentials, so HKDF is the appropriate
+    // low-cost one-way derivation. A password KDF such as scrypt adds latency
+    // without improving resistance to guessing attacks here.
+    hkdf("sha256", principalKey, EMAIL_QUOTA_SALT, "qurl-mcp-email-quota", 32, (error, key) => {
       if (error) {
         reject(error);
         return;
       }
-      resolve(derivedKey.toString("hex"));
+      resolve(Buffer.from(key).toString("hex"));
     });
   });
 }

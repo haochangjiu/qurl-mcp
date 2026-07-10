@@ -1,6 +1,11 @@
 import { z, type ZodError } from "zod";
 import { QURLAPIError } from "../client.js";
 
+// Contract snapshot: api-spec/qurls.yaml defines r_ IDs with exactly eleven
+// lowercase URL-safe suffix characters. Connector responses and tool inputs
+// share this constant so a future spec change fails in one obvious place.
+export const RESOURCE_ID_PATTERN = /^r_[a-z0-9_-]{11}$/;
+
 /**
  * Tool result shape that handlers return. Kept structural so we don't
  * take a hard dep on the MCP SDK's internal types. `structuredContent`
@@ -128,7 +133,7 @@ export function resourceIdSchema(verb: string) {
 export function resourceOnlyIdSchema(verb: string) {
   return z
     .string()
-    .regex(/^r_[a-z0-9_-]{11}$/, "Expected an r_ resource ID")
+    .regex(RESOURCE_ID_PATTERN, "Expected an r_ resource ID")
     .describe(`The resource ID (r_ prefix) to ${verb}.`);
 }
 

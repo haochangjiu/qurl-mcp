@@ -230,6 +230,9 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 `allowedHosts` is explicitly configured. Set `trustProxyHops` (or
 `MCP_TRUST_PROXY_HOPS`) to the exact number of trusted proxy hops; leave it at
 `0` for direct connections so forwarded IP headers cannot spoof rate-limit keys.
+Because `/mcp` rate limits are keyed by client IP, reverse-proxy deployments
+must set the correct hop count or all callers behind the proxy will share the
+proxy's single rate-limit bucket.
 Bearer credentials are conclusively validated by the first downstream qURL API
 call. Until then, sessions use the smaller pending-session cap and one-minute
 validation deadline, so arbitrary non-empty bearer strings cannot occupy the full

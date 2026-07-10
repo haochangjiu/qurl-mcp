@@ -1,16 +1,6 @@
 import { basename } from "node:path";
 import type { PublicVideoConfig } from "../config.js";
-
-const referenceSiteUrl = "https://layerv.ai";
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+import { escapeHtml, REFERENCE_SITE_URL } from "./html.js";
 
 export function getPublicVideoFileRoute(pagePath: string): string {
   return `${pagePath.replace(/\/+$/, "") || "/media/video"}/file`;
@@ -269,11 +259,11 @@ export function renderPublicVideoPageHtml(config: PublicVideoConfig, baseUrl: st
   <body>
     <div class="shell">
       <header class="topbar">
-        <a class="brand" href="${escapeHtml(referenceSiteUrl)}" aria-label="LayerV Home">
+        <a class="brand" href="${escapeHtml(REFERENCE_SITE_URL)}" aria-label="LayerV Home">
           <span class="brand-mark" aria-hidden="true"></span>
           <span>LayerV Media</span>
         </a>
-        <a class="home-link" href="${escapeHtml(referenceSiteUrl)}">Back to layerv.ai</a>
+        <a class="home-link" href="${escapeHtml(REFERENCE_SITE_URL)}">Back to layerv.ai</a>
       </header>
 
       <section class="hero">
@@ -315,7 +305,7 @@ export function renderPublicVideoPageHtml(config: PublicVideoConfig, baseUrl: st
 
       <footer class="footer">
         <span>LayerV public media page</span>
-        <a href="${escapeHtml(referenceSiteUrl)}">${escapeHtml(referenceSiteUrl)}</a>
+        <a href="${escapeHtml(REFERENCE_SITE_URL)}">${escapeHtml(REFERENCE_SITE_URL)}</a>
       </footer>
     </div>
   </body>

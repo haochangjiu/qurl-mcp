@@ -12,6 +12,7 @@ import {
   loadRuntimeConfig,
   parseSizeBytes,
 } from "../config.js";
+import { RESOURCE_ID_PATTERN } from "./_shared.js";
 
 export const supportedMimeTypes = [
   "application/pdf",
@@ -252,7 +253,7 @@ function extractResourceId(parsed: unknown): string | undefined {
   if (
     "resource_id" in parsed &&
     typeof parsed.resource_id === "string" &&
-    /^r_[a-z0-9_-]{11}$/.test(parsed.resource_id)
+    RESOURCE_ID_PATTERN.test(parsed.resource_id)
   ) {
     return parsed.resource_id;
   }
@@ -264,7 +265,7 @@ function extractResourceId(parsed: unknown): string | undefined {
     parsed.data !== null &&
     "resource_id" in parsed.data &&
     typeof parsed.data.resource_id === "string" &&
-    /^r_[a-z0-9_-]{11}$/.test(parsed.data.resource_id)
+    RESOURCE_ID_PATTERN.test(parsed.data.resource_id)
   ) {
     return parsed.data.resource_id;
   }

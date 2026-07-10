@@ -470,11 +470,10 @@ export class QURLClient implements IQURLClient {
       markRequestCredentialValidated();
       return result;
     } catch (err) {
-      const translated = translateError(err);
       // Only a successful API response conclusively validates the request
       // credential. Any error status may have originated from an intermediary
       // before the qURL API authenticated the bearer token.
-      throw translated;
+      throw translateError(err);
     }
   }
 

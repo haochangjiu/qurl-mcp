@@ -66,7 +66,7 @@ startCommand:
         default: '10'
       smtpMaxRecipientsPerHour:
         type: string
-        description: Per-key attempted-recipient cap per rolling hour.
+        description: Per-key attempted-recipient cap per fixed hourly window.
         default: '100'
   commandFunction: |-
     (config) => ({

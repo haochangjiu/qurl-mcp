@@ -116,7 +116,7 @@
         },
         {
           "name": "QURL_SMTP_MAX_RECIPIENTS_PER_HOUR",
-          "description": "Maximum attempted recipients per qURL key per rolling hour (default 100).",
+          "description": "Maximum attempted recipients per qURL key per fixed hourly window (default 100).",
           "isRequired": false,
           "format": "string",
           "default": "100"

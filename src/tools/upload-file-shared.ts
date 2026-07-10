@@ -149,7 +149,11 @@ export function getMaxUploadFileBytes(): number {
 }
 
 export function validateFileNameContentType(fileName: string, contentType: string): void {
+  const extension = extname(fileName).toLowerCase();
   const inferred = inferContentType(fileName);
+  if (extension && !inferred) {
+    throw new Error("file_name must use a supported PDF or raster image extension.");
+  }
   if (inferred && inferred !== contentType) {
     throw new Error(`content_type ${contentType} does not match the filename extension.`);
   }
@@ -193,14 +197,10 @@ function parseJsonBody(raw: string): unknown {
 /**
  * Extract error details from connector error response body.
  */
-function extractErrorDetail(parsed: unknown, rawFallback: string): string {
+function extractErrorDetail(parsed: unknown): string | undefined {
   const errorBody = (parsed ?? {}) as ConnectorErrorBody;
   return (
-    errorBody.error?.detail ??
-    errorBody.error?.message ??
-    errorBody.detail ??
-    errorBody.message ??
-    rawFallback
+    errorBody.error?.detail ?? errorBody.error?.message ?? errorBody.detail ?? errorBody.message
   );
 }
 
@@ -226,13 +226,8 @@ function extractErrorMetadata(parsed: unknown): { type?: string; instance?: stri
 /**
  * Throw a QURLAPIError from a failed connector response.
  */
-function throwConnectorError(
-  response: Response,
-  parsed: unknown,
-  raw: string,
-  requestId?: string,
-): never {
-  const detail = extractErrorDetail(parsed, raw);
+function throwConnectorError(response: Response, parsed: unknown, requestId?: string): never {
+  const detail = extractErrorDetail(parsed);
   const { type, instance } = extractErrorMetadata(parsed);
   throw new QURLAPIError(
     response.status,
@@ -309,7 +304,7 @@ async function processConnectorResponse(response: Response): Promise<ConnectorUp
   const parsed = parseJsonBody(raw);
 
   if (!response.ok) {
-    throwConnectorError(response, parsed, raw, requestId);
+    throwConnectorError(response, parsed, requestId);
   }
 
   const resourceId = extractResourceId(parsed);

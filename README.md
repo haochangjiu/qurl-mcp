@@ -171,7 +171,7 @@ for loopback development endpoints.
 | `smtp.allowedRecipients` | Optional exact-address allowlist |
 | `smtp.allowedRecipientDomains` | Optional domain allowlist |
 | `smtp.maxRecipientsPerMessage` | Per-message recipient cap (default `10`) |
-| `smtp.maxRecipientsPerHour` | Per-qURL-key rolling hourly attempted-recipient cap (default `100`) |
+| `smtp.maxRecipientsPerHour` | Per-qURL-key attempted-recipient cap per fixed hourly window (default `100`) |
 
 These settings are used when email delivery is requested by tools such as:
 
@@ -188,6 +188,8 @@ failures cannot bypass the abuse limit.
 Hourly quota state is maintained per server process: it resets on restart and
 is not shared across replicas. Operators running multiple instances should
 enforce a corresponding aggregate limit at the SMTP provider or gateway.
+The quota uses a fixed one-hour window that starts with the first attempted
+delivery after the prior window expires.
 
 Prefer environment variables for SMTP credentials and policy:
 `QURL_SMTP_USERNAME`, `QURL_SMTP_PASSWORD`, `QURL_SMTP_FROM_EMAIL`,
@@ -235,6 +237,10 @@ session pool for the normal 15-minute TTL. A client that performs only MCP
 introspection remains pending by design; after deadline eviction it must
 re-initialize before its next request. Both pending-session limits are
 configurable for clients with longer introspection-to-tool-call gaps.
+Accepting a non-empty bearer during MCP initialization is intentional: it keeps
+protocol introspection available before the first qURL operation, while the
+pending-session cap, absolute deadline, and request rate limit bound invalid-key
+slot usage. Only a successful downstream qURL API response promotes the session.
 
 ## Configuration Priority
 

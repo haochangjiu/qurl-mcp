@@ -19,6 +19,7 @@ import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middlew
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { rateLimit } from "express-rate-limit";
 import { runWithRequestAuthContext } from "./auth/request-context.js";
+import type { IQURLClient } from "./client.js";
 import {
   createPassthroughBearerVerifier,
   createQurlClientFromBearerToken,
@@ -52,6 +53,7 @@ function getJsonBodyLimitBytes(maxUploadFileDataBytes: number): number {
 }
 
 export interface HttpRuntimeOptions {
+  clientFactory?: (bearerToken: string) => IQURLClient;
   runtimeConfigPath?: string;
   version: string;
 }
@@ -364,7 +366,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           delete req.headers["mcp-session-id"];
 
           const server = createServer(
-            createQurlClientFromBearerToken(bearerToken, { qurlApiUrl: defaultQurlApiUrl }),
+            options.clientFactory?.(bearerToken) ??
+              createQurlClientFromBearerToken(bearerToken, { qurlApiUrl: defaultQurlApiUrl }),
             version,
             "http",
           );

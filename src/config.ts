@@ -63,7 +63,7 @@ export type ConfigFileShape = Partial<{
 
 const DEFAULT_CONFIG_PATH = "qurl-mcp.config.json";
 export const DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES = 10 * 1024 * 1024;
-const MAX_UPLOAD_FILE_DATA_BYTES = 100 * 1024 * 1024;
+export const MAX_UPLOAD_FILE_DATA_BYTES = 100 * 1024 * 1024;
 
 /**
  * Module-level cache for runtime config. Keyed by resolved config path.
@@ -124,7 +124,7 @@ export function parseSizeBytes(value: unknown, fallback: number, fieldName: stri
 
   if (/^\d+$/.test(trimmed)) {
     const bytes = Number(trimmed);
-    if (!Number.isFinite(bytes) || bytes <= 0) {
+    if (!Number.isSafeInteger(bytes) || bytes <= 0) {
       throw new Error(`${fieldName} must be a positive number.`);
     }
     return bytes;

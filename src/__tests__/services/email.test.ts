@@ -217,7 +217,7 @@ describe("sendEmailMessage", () => {
     expect(nodemailerMocks.close).toHaveBeenCalledOnce();
   });
 
-  it("enforces the per-key hourly recipient quota", async () => {
+  it("enforces and resets the per-key fixed hourly recipient quota", async () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(
       configPath,
@@ -236,6 +236,7 @@ describe("sendEmailMessage", () => {
     process.env.QURL_MCP_CONFIG = configPath;
     process.env.QURL_API_KEY = "lv_live_quota_test";
     nodemailerMocks.sendMail.mockResolvedValue({ messageId: "msg-1" });
+    const now = vi.spyOn(Date, "now").mockReturnValue(0);
 
     const first = await sendEmailMessage({
       to: ["first@example.com"],
@@ -247,10 +248,17 @@ describe("sendEmailMessage", () => {
       subject: "Second",
       text: "Body",
     });
+    now.mockReturnValue(60 * 60 * 1000 + 1);
+    const afterWindow = await sendEmailMessage({
+      to: ["third@example.com"],
+      subject: "Third",
+      text: "Body",
+    });
 
     expect(first.sent).toBe(1);
     expect(second.attempted).toBe(false);
     expect(second.skipped_reason).toContain("hourly limit of 1");
-    expect(nodemailerMocks.sendMail).toHaveBeenCalledOnce();
+    expect(afterWindow.sent).toBe(1);
+    expect(nodemailerMocks.sendMail).toHaveBeenCalledTimes(2);
   });
 });

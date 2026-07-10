@@ -43,9 +43,33 @@ export async function maybeDeliverToolEmail(
     "Sent by qURL.",
   ].filter((section): section is string => typeof section === "string" && section.length > 0);
 
-  return sendEmailMessage({
-    to: input.delivery.to,
-    subject,
-    text: sections.join("\n\n"),
-  });
+  try {
+    return await sendEmailMessage({
+      to: input.delivery.to,
+      subject,
+      text: sections.join("\n\n"),
+    });
+  } catch (error) {
+    // Link creation has already succeeded when this helper runs. Never turn a
+    // delivery failure into a failed tool call because qurl_link is one-shot
+    // output that cannot be recovered later.
+    console.error(
+      `Email delivery failed after qURL creation (${error instanceof Error ? error.name : "UnknownError"})`,
+    );
+    const recipients = Array.from(
+      new Set(input.delivery.to.map((recipient) => recipient.trim().toLowerCase()).filter(Boolean)),
+    );
+    return {
+      attempted: false,
+      enabled: true,
+      recipients,
+      failed: recipients.length,
+      skipped_reason: "Email delivery failed after the qURL was created.",
+      results: recipients.map((email) => ({
+        email,
+        success: false,
+        error: "Email delivery could not be completed.",
+      })),
+    };
+  }
 }

@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
+import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
 import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-delivery.js";
@@ -15,10 +16,13 @@ import {
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 
+const MAX_UPLOAD_FILE_BASE64_CHARACTERS = Math.ceil((MAX_UPLOAD_FILE_DATA_BYTES * 4) / 3) + 1024;
+
 export const uploadFileDataQurlSchema = z.object({
   file_base64: z
     .string()
     .min(1)
+    .max(MAX_UPLOAD_FILE_BASE64_CHARACTERS)
     .describe(
       "Base64-encoded PDF or raster image content. Raw base64 and data URLs are both accepted. For compressible images, compress them first and then convert them to base64 before calling this tool.",
     ),

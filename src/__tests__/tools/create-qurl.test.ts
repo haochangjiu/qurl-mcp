@@ -300,5 +300,27 @@ describe("createQurlTool", () => {
         skipped_reason: "SMTP is not configured.",
       });
     });
+
+    it("returns the one-shot link when email delivery throws", async () => {
+      const mockCreate = vi.fn().mockResolvedValue({ data: fixture });
+      vi.mocked(sendEmailMessage).mockRejectedValue(new Error("SMTP connection failed"));
+      const tool = createQurlTool(makeMockClient({ createQURL: mockCreate }));
+
+      const result = await tool.handler({
+        target_url: "https://example.com/protected",
+        email_delivery: { to: ["alice@example.com"] },
+      });
+
+      expect(result.isError).not.toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.qurl_link).toBe(fixture.qurl_link);
+      expect(parsed.email_delivery).toEqual(
+        expect.objectContaining({
+          attempted: false,
+          failed: 1,
+          skipped_reason: "Email delivery failed after the qURL was created.",
+        }),
+      );
+    });
   });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getConnectorUploadUrl } from "../../tools/upload-file-shared.js";
+import {
+  getConnectorUploadUrl,
+  normalizeFileName,
+  validateFileNameContentType,
+} from "../../tools/upload-file-shared.js";
 
 describe("getConnectorUploadUrl", () => {
   it("builds the fixed connector upload endpoint for HTTPS origins", () => {
@@ -34,6 +38,23 @@ describe("getConnectorUploadUrl", () => {
     );
     expect(() => getConnectorUploadUrl("https://connector.example.com/#other")).toThrow(
       "must not contain a query string or fragment",
+    );
+  });
+});
+
+describe("file name validation", () => {
+  it("strips traversal components and rejects control characters", () => {
+    expect(normalizeFileName("../../private/sample.pdf")).toBe("sample.pdf");
+    expect(normalizeFileName("..\\..\\private\\sample.pdf")).toBe("sample.pdf");
+    expect(() => normalizeFileName("sample\u0000.pdf")).toThrow("control characters");
+  });
+
+  it("rejects misleading or unsupported extensions", () => {
+    expect(() => validateFileNameContentType("image.png.exe", "image/png")).toThrow(
+      "supported PDF or raster image extension",
+    );
+    expect(() => validateFileNameContentType("document.pdf", "image/png")).toThrow(
+      "does not match",
     );
   });
 });

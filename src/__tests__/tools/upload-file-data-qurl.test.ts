@@ -347,5 +347,24 @@ describe("uploadFileDataQurlTool", () => {
         message: "upload rejected",
       });
     });
+
+    it("does not echo an unstructured connector error body", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(new Response("upstream secret detail", { status: 502 }));
+      const tool = uploadFileDataQurlTool(makeMockClient());
+
+      await expect(
+        tool.handler({
+          file_base64: fixtureBase64,
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toMatchObject<QURLAPIError>({
+        statusCode: 502,
+        code: "connector_upload_failed",
+        message: "Connector upload failed with HTTP 502",
+      });
+    });
   });
 });

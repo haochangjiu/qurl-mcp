@@ -119,6 +119,9 @@ export async function sendEmailMessage(
     if (now - quota.windowStartedAt >= EMAIL_QUOTA_WINDOW_MS) emailQuotaByPrincipal.delete(key);
   }
   if (!emailQuotaByPrincipal.has(principal) && emailQuotaByPrincipal.size >= 10_000) {
+    // Fail closed instead of evicting a live principal. LRU eviction would let
+    // an attacker cycle keys until a prior key's quota state disappears, then
+    // reuse that key to bypass the hourly recipient limit.
     return {
       attempted: false,
       enabled: true,

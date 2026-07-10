@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { createReadStream, existsSync, statSync, type Stats } from "node:fs";
+import { createReadStream, statSync, type Stats } from "node:fs";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -209,10 +209,6 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   function streamPublicVideo(req: express.Request, res: express.Response, filePath: string): void {
     let stats: Stats;
     try {
-      if (!existsSync(filePath)) {
-        res.status(404).send("Configured video file was not found.");
-        return;
-      }
       stats = statSync(filePath);
     } catch (error) {
       console.error(`[public-video] file inspection failed (${formatErrorForLog(error)})`);
@@ -248,6 +244,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       return;
     }
 
+    // Single ranges cover browser video playback. RFC 9110 permits a server to
+    // reject unsupported multi-range requests, which we answer with 416.
     const match = /^bytes=(\d*)-(\d*)$/.exec(range);
     if (!match) {
       res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();

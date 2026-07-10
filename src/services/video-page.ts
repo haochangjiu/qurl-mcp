@@ -3,7 +3,7 @@ import type { PublicVideoConfig } from "../config.js";
 import { escapeHtml, REFERENCE_SITE_URL } from "./html.js";
 
 export function getPublicVideoFileRoute(pagePath: string): string {
-  return `${pagePath.replace(/\/+$/, "") || "/media/video"}/file`;
+  return `${pagePath.replace(/\/+$/, "")}/file`;
 }
 
 export function renderPublicVideoPageHtml(config: PublicVideoConfig, baseUrl: string): string {

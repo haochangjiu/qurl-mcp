@@ -457,7 +457,13 @@ describe("public video range streaming", () => {
 
   it("rejects malformed and unsatisfiable ranges", async () => {
     const baseUrl = await startVideoServer();
-    for (const range of ["bytes=5-2", `bytes=${fixtureSize}-`, "bytes=-", "items=0-1"]) {
+    for (const range of [
+      "bytes=5-2",
+      `bytes=${fixtureSize}-`,
+      "bytes=-",
+      "bytes=0-1,2-3",
+      "items=0-1",
+    ]) {
       const response = await fetch(`${baseUrl}/file`, { headers: { range } });
       expect(response.status).toBe(416);
       expect(response.headers.get("content-range")).toBe(`bytes */${fixtureSize}`);

@@ -28,11 +28,11 @@ describe("createServer", () => {
   }
 
   describe("tools", () => {
-    it("registers 14 tools in stdio mode", async () => {
+    it("registers 16 tools in stdio mode", async () => {
       const { client } = await connectServer();
       const { tools } = await client.listTools();
 
-      expect(tools).toHaveLength(14);
+      expect(tools).toHaveLength(16);
     });
 
     it("registers stdio tools with correct names", async () => {
@@ -54,7 +54,9 @@ describe("createServer", () => {
         "terminate_qurl_sessions",
         "update_qurl",
         "update_qurl_token",
+        "upload_file_data_qurl",
         "upload_file_qurl",
+        "upload_text_qurl",
       ]);
     });
 

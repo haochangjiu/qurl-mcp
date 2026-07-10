@@ -154,7 +154,7 @@ export function validateFileNameContentType(fileName: string, contentType: strin
 }
 
 export function validateFileSignature(fileData: Uint8Array, contentType: string): void {
-  const bytes = Buffer.from(fileData);
+  const bytes = Buffer.from(fileData.buffer, fileData.byteOffset, fileData.byteLength);
   const ascii = (start: number, end: number) => bytes.subarray(start, end).toString("ascii");
   const valid =
     (contentType === "application/pdf" &&

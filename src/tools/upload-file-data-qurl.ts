@@ -21,6 +21,8 @@ import {
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 
+// This schema ceiling is a protocol-wide safety bound. HTTP body parsing and
+// getMaxUploadFileBytes apply the operator's usually smaller runtime limit.
 const MAX_UPLOAD_FILE_BASE64_CHARACTERS = Math.ceil((MAX_UPLOAD_FILE_DATA_BYTES * 4) / 3) + 1024;
 
 export const uploadFileDataQurlSchema = z.object({
@@ -167,14 +169,14 @@ export function uploadFileDataQurlTool(
     title: "Upload File Data qURL",
     description:
       "Upload base64-encoded PDF or raster image content to a qURL connector, then mint an access link for it. " +
-      "This is the correct tool for a single image, PDF, or file attachment in HTTP MCP mode, especially when the user wants 'the qURL of this image/file' or wants the generated link emailed. " +
+      "This is the correct tool for a single in-chat image, PDF, or file attachment in either MCP transport, especially when the user wants 'the qURL of this image/file' or wants the generated link emailed. " +
       "Use this when you have the file data available but cannot provide a server-local file path. " +
       "Use `upload_file_qurl` when the file already exists on the MCP server host, use `create_qurl` when you already have a URL, and use `mint_link` when the file has already been uploaded and you only need another token. " +
       "For compressible images, compress them before converting to base64 so the request is smaller and more reliable. " +
       "The tool decodes `file_base64`, uploads the file to `${QURL_CONNECTOR_URL}/api/upload`, then mints a qURL from the returned `resource_id`. " +
       "Supported MIME types are application/pdf, image/png, image/jpeg, image/webp, and image/gif. " +
       "If `one_time_use` is omitted, the tool defaults it to `true` for safer file distribution. " +
-      "Requires both `QURL_API_KEY` and `QURL_CONNECTOR_URL` in the server environment or runtime config. " +
+      "Requires `QURL_CONNECTOR_URL`; stdio reads `QURL_API_KEY` from server config, while HTTP uses the caller's bearer credential. " +
       "**Returns:** `{ resource_id: string, qurl_id: string, qurl_link: string, qurl_site?: string, expires_at: string, file_name: string, content_type: string, size_bytes: number, branded_domain?: string, type?: string }`.",
     inputSchema: uploadFileDataQurlSchema,
     outputSchema: uploadFileQurlOutputSchema,

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatErrorForLog, logInfo, sanitizeLogValue } from "../logging.js";
+import {
+  formatErrorForLog,
+  logInfo,
+  sanitizeConsoleArgument,
+  sanitizeLogValue,
+} from "../logging.js";
 
 describe("logging", () => {
   afterEach(() => {
@@ -24,5 +29,6 @@ describe("logging", () => {
     expect(formatErrorForLog(new Error("failed with lv_live_secret\r\nnext"))).toBe(
       "Error: failed with [REDACTED]  next",
     );
+    expect(sanitizeConsoleArgument({ token: "lv_live_secret" })).toBe("[object Object]");
   });
 });

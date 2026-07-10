@@ -75,13 +75,11 @@ export const toolFactories = [
 
 export function getToolFactoriesForMode(mode: ServerMode): ToolFactory[] {
   // Security boundary: remote HTTP callers can upload bounded request bytes
-  // but never read server-local paths; stdio callers can explicitly share a
-  // local path but do not need the larger base64/text request surfaces.
-  return toolFactories.filter((factory) =>
-    mode === "http"
-      ? factory !== uploadFileQurlTool
-      : factory !== uploadFileDataQurlTool && factory !== uploadTextQurlTool,
-  );
+  // but never read server-local paths. Local stdio callers may use all three
+  // upload forms, including base64/text for in-chat attachments.
+  return mode === "http"
+    ? toolFactories.filter((factory) => factory !== uploadFileQurlTool)
+    : toolFactories;
 }
 
 export function createServer(

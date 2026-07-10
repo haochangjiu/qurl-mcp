@@ -32,11 +32,6 @@ export function getRequestMaxUploadFileDataBytes(): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-export function getRequestSessionId(): string | undefined {
-  const sessionId = requestAuthStorage.getStore()?.sessionId?.trim();
-  return sessionId ? sessionId : undefined;
-}
-
 export function markRequestCredentialValidated(): void {
   requestAuthStorage.getStore()?.markCredentialValidated?.();
 }

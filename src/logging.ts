@@ -29,6 +29,20 @@ export function formatErrorForLog(error: unknown): string {
   return `${name}: ${message}`;
 }
 
+export function sanitizeConsoleArgument(arg: unknown): unknown {
+  if (typeof arg === "string") return sanitizeLogValue(arg);
+  if (arg instanceof Error) return formatErrorForLog(arg);
+  if (arg === null || ["number", "boolean", "bigint"].includes(typeof arg)) return arg;
+  // Do not let console format arbitrary objects because nested credential
+  // fields would bypass string redaction. Call sites that need structure must
+  // select and sanitize the fields they intend to log.
+  try {
+    return sanitizeLogValue(String(arg));
+  } catch {
+    return "[unprintable]";
+  }
+}
+
 function prefixArgs(args: unknown[]): unknown[] {
   const prefix = `${formatTimestamp()} `;
   if (args.length === 0) {
@@ -36,13 +50,9 @@ function prefixArgs(args: unknown[]): unknown[] {
   }
 
   // Make redaction the console boundary rather than a call-site convention.
-  // Strings cover interpolated values; Error objects cover the other common
-  // logging form without dumping an unredacted stack or attached properties.
-  const safeArgs = args.map((arg) => {
-    if (typeof arg === "string") return sanitizeLogValue(arg);
-    if (arg instanceof Error) return formatErrorForLog(arg);
-    return arg;
-  });
+  // Arbitrary objects are collapsed rather than delegated to console's deep
+  // formatter, which could reveal nested credentials.
+  const safeArgs = args.map(sanitizeConsoleArgument);
   const [first, ...rest] = safeArgs;
   if (typeof first === "string") {
     return [`${prefix}${first}`, ...rest];

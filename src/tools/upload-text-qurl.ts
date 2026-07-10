@@ -79,7 +79,7 @@ export function uploadTextQurlTool(
       "Use `upload_file_data_qurl` for binary/image/PDF attachments, use `upload_file_qurl` when a file already exists on disk, and use `create_qurl` when you already have a target URL. " +
       "In v1 the tool does not apply markdown rich-text rendering; it writes the provided content into a plain-text PDF, uploads it to `${QURL_CONNECTOR_URL}/api/upload`, then mints a qURL from the returned `resource_id`. " +
       "If `one_time_use` is omitted, the tool defaults it to `true` to match the uploaded-content sharing flow. " +
-      "Requires both `QURL_API_KEY` and `QURL_CONNECTOR_URL` in the server environment or runtime config. " +
+      "Requires `QURL_CONNECTOR_URL`; stdio reads `QURL_API_KEY` from server config, while HTTP uses the caller's bearer credential. " +
       "**Returns:** `{ resource_id: string, qurl_id: string, qurl_link: string, qurl_site?: string, expires_at: string, file_name: string, content_type: string, size_bytes: number, branded_domain?: string, type?: string, email_delivery?: object }`.",
     inputSchema: uploadTextQurlSchema,
     outputSchema: uploadFileQurlOutputSchema,

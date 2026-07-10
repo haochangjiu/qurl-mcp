@@ -48,11 +48,11 @@ It currently supports:
 
 ### Upload Tools
 
-| Tool                    | Mode    | Description                                |
-| ----------------------- | ------- | ------------------------------------------ |
-| `upload_file_qurl`      | `stdio` | Upload a local file and mint a qURL        |
-| `upload_file_data_qurl` | `http`  | Upload base64 file content and mint a qURL |
-| `upload_text_qurl`      | `http`  | Upload text content and mint a qURL        |
+| Tool                    | Mode         | Description                                |
+| ----------------------- | ------------ | ------------------------------------------ |
+| `upload_file_qurl`      | `stdio`      | Upload a local file and mint a qURL        |
+| `upload_file_data_qurl` | `stdio`/HTTP | Upload base64 file content and mint a qURL |
+| `upload_text_qurl`      | `stdio`/HTTP | Upload text content and mint a qURL        |
 
 `upload_file_qurl` is intentionally stdio-only. It can read any supported
 PDF/image that the local MCP process user can access, so agents should invoke
@@ -61,6 +61,8 @@ to untrusted prompts or autonomous agents: prompt injection could otherwise
 select another readable PDF/image on the host. Run stdio under an OS account
 whose filesystem access is limited to intended shareable content. HTTP mode
 never registers this host-file tool.
+The byte/text tools are also available in stdio so local clients can share
+in-chat attachments without first materializing them at a known host path.
 
 ### MCP Resources
 

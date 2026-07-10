@@ -85,6 +85,9 @@ describe("file name validation", () => {
       validateFileSignature(Buffer.from("junk before %PDF-1.7"), "application/pdf"),
     ).toThrow("does not match");
     expect(() => validateFileSignature(Buffer.from("%PDF-1.7"), "application/pdf")).not.toThrow();
+    expect(() =>
+      validateFileSignature(Buffer.from([0xa5, 0xd0, 0xc4, 0xc6, 0xad]), "application/pdf"),
+    ).toThrow("does not match");
   });
 
   it("requires a valid WebP image chunk after the RIFF/WEBP header", () => {

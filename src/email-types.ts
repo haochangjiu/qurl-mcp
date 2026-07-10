@@ -24,11 +24,11 @@ export const emailDeliveryRecipientResultSchema = z.object({
 export const emailDeliveryResultSchema = z.object({
   attempted: z.boolean(),
   enabled: z.boolean(),
-  recipients: z.array(z.string()).optional(),
-  sent: z.number().optional(),
-  failed: z.number().optional(),
+  recipients: z.array(z.string()),
+  sent: z.number(),
+  failed: z.number(),
   skipped_reason: z.string().optional(),
-  results: z.array(emailDeliveryRecipientResultSchema).optional(),
+  results: z.array(emailDeliveryRecipientResultSchema),
 });
 
 export type EmailDeliveryRecipientResult = z.infer<typeof emailDeliveryRecipientResultSchema>;

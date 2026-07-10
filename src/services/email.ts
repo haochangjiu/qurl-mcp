@@ -41,13 +41,20 @@ export function clearEmailQuotaState(): void {
   emailQuotaByPrincipal.clear();
 }
 
-function blockedRecipientResults(recipients: string[]): EmailDeliveryRecipientResult[] {
+function skippedRecipientResults(
+  recipients: string[],
+  error: string,
+): EmailDeliveryRecipientResult[] {
   return recipients.map((email) => ({
     email,
     success: false,
     skipped: true,
-    error: "Recipient is not allowed by SMTP policy.",
+    error,
   }));
+}
+
+function blockedRecipientResults(recipients: string[]): EmailDeliveryRecipientResult[] {
+  return skippedRecipientResults(recipients, "Recipient is not allowed by SMTP policy.");
 }
 
 async function deriveEmailQuotaPrincipal(principalKey: string): Promise<string> {
@@ -74,6 +81,10 @@ export async function sendEmailMessage(
     return {
       attempted: false,
       enabled: false,
+      recipients,
+      sent: 0,
+      failed: 0,
+      results: [],
       skipped_reason: "No email recipients were provided.",
     };
   }
@@ -101,6 +112,9 @@ export async function sendEmailMessage(
       attempted: false,
       enabled: false,
       recipients,
+      sent: 0,
+      failed: 0,
+      results: [],
       skipped_reason: "SMTP is not configured.",
     };
   }
@@ -128,6 +142,12 @@ export async function sendEmailMessage(
       attempted: false,
       enabled: true,
       recipients,
+      sent: 0,
+      failed: recipients.length,
+      results: skippedRecipientResults(
+        recipients,
+        "Recipient count exceeds the configured SMTP policy limit.",
+      ),
       skipped_reason: `Recipient count exceeds the configured per-message limit of ${smtp.maxRecipientsPerMessage}.`,
     };
   }
@@ -181,6 +201,15 @@ export async function sendEmailMessage(
       attempted: false,
       enabled: true,
       recipients,
+      sent: 0,
+      failed: recipients.length,
+      results: [
+        ...blockedRecipientResults(blockedRecipients),
+        ...skippedRecipientResults(
+          allowedRecipients,
+          "Email delivery was skipped because quota tracking is at capacity.",
+        ),
+      ],
       skipped_reason: "Email quota tracking capacity has been reached. Try again later.",
     };
   }
@@ -190,6 +219,15 @@ export async function sendEmailMessage(
       attempted: false,
       enabled: true,
       recipients,
+      sent: 0,
+      failed: recipients.length,
+      results: [
+        ...blockedRecipientResults(blockedRecipients),
+        ...skippedRecipientResults(
+          allowedRecipients,
+          "Email delivery was skipped because the hourly quota was reached.",
+        ),
+      ],
       skipped_reason: `Recipient quota exceeds the configured per-key hourly limit of ${smtp.maxRecipientsPerHour}.`,
     };
   }

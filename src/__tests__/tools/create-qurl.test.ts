@@ -315,6 +315,9 @@ describe("createQurlTool", () => {
         attempted: false,
         enabled: false,
         recipients: ["alice@example.com"],
+        sent: 0,
+        failed: 0,
+        results: [],
         skipped_reason: "SMTP is not configured.",
       });
       const client = makeMockClient({ createQURL: mockCreate });
@@ -331,6 +334,9 @@ describe("createQurlTool", () => {
         attempted: false,
         enabled: false,
         recipients: ["alice@example.com"],
+        sent: 0,
+        failed: 0,
+        results: [],
         skipped_reason: "SMTP is not configured.",
       });
     });

@@ -89,11 +89,21 @@ export async function maybeDeliverToolEmail(
     // delivery failure into a failed tool call because qurl_link is one-shot
     // output that cannot be recovered later.
     console.error(`Email delivery failed after qURL creation (${formatErrorForLog(error)})`);
+    const recipients = uniqueRecipients(input.delivery.to);
+    const skippedReason = getSanitizedDeliveryFailureReason(error);
     return {
       attempted: false,
       enabled: true,
-      recipients: uniqueRecipients(input.delivery.to),
-      skipped_reason: getSanitizedDeliveryFailureReason(error),
+      recipients,
+      sent: 0,
+      failed: recipients.length,
+      results: recipients.map((email) => ({
+        email,
+        success: false,
+        skipped: true,
+        error: skippedReason,
+      })),
+      skipped_reason: skippedReason,
     };
   }
 }

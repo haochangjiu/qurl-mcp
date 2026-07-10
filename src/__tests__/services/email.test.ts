@@ -83,6 +83,9 @@ describe("sendEmailMessage", () => {
       attempted: false,
       enabled: false,
       recipients: ["alice@example.com"],
+      sent: 0,
+      failed: 0,
+      results: [],
       skipped_reason: "SMTP is not configured.",
     });
     expect(nodemailerMocks.createTransport).not.toHaveBeenCalled();

@@ -8,6 +8,10 @@ describe("text helpers", () => {
     expect(isControlCodePoint(32)).toBe(false);
     expect(isControlCodePoint(126)).toBe(false);
     expect(isControlCodePoint(127)).toBe(true);
-    expect(isControlCodePoint(128)).toBe(false);
+    expect(isControlCodePoint(128)).toBe(true);
+    expect(isControlCodePoint(159)).toBe(true);
+    expect(isControlCodePoint(160)).toBe(false);
+    expect(isControlCodePoint(0x2028)).toBe(true);
+    expect(isControlCodePoint(0x2029)).toBe(true);
   });
 });

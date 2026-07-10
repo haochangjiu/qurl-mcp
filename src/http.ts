@@ -628,8 +628,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     );
   }
 
-  function setPublicPageSecurityHeaders(res: express.Response, html?: string): void {
-    const styleSources = html ? getInlineStyleSources(html) : [];
+  function setPublicPageSecurityHeaders(res: express.Response, styleSources: string[] = []): void {
     const stylePolicy = styleSources.length > 0 ? styleSources.join(" ") : "'none'";
     res.set({
       "Content-Security-Policy": `default-src 'none'; style-src ${stylePolicy}; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
@@ -643,8 +642,9 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   for (const document of legalDocuments) {
     const html = renderLegalDocumentHtml(document.path, baseUrl);
     if (!html) continue;
+    const styleSources = getInlineStyleSources(html);
     app.get(document.path, publicRouteRateLimiter, (_req, res) => {
-      setPublicPageSecurityHeaders(res, html);
+      setPublicPageSecurityHeaders(res, styleSources);
       res.type("html").send(html);
     });
   }
@@ -654,9 +654,10 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const videoPagePath = publicVideo.pagePath;
     const videoFileRoute = getPublicVideoFileRoute(videoPagePath);
     const videoPageHtml = renderPublicVideoPageHtml(publicVideo, baseUrl);
+    const videoStyleSources = getInlineStyleSources(videoPageHtml);
 
     app.get(videoPagePath, publicRouteRateLimiter, (_req, res) => {
-      setPublicPageSecurityHeaders(res, videoPageHtml);
+      setPublicPageSecurityHeaders(res, videoStyleSources);
       res.type("html").send(videoPageHtml);
     });
 

@@ -90,12 +90,15 @@ describe("file name validation", () => {
   it("requires a valid WebP image chunk after the RIFF/WEBP header", () => {
     const valid = Buffer.alloc(16);
     valid.write("RIFF", 0, "ascii");
+    valid.writeUInt32LE(valid.length - 8, 4);
     valid.write("WEBP", 8, "ascii");
     valid.write("VP8X", 12, "ascii");
     const invalid = Buffer.from(valid);
     invalid.write("WAVE", 12, "ascii");
+    const trailingPolyglot = Buffer.concat([valid, Buffer.from("trailing")]);
 
     expect(() => validateFileSignature(valid, "image/webp")).not.toThrow();
     expect(() => validateFileSignature(invalid, "image/webp")).toThrow("does not match");
+    expect(() => validateFileSignature(trailingPolyglot, "image/webp")).toThrow("does not match");
   });
 });

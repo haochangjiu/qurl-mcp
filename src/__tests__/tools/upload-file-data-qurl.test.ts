@@ -201,6 +201,19 @@ describe("uploadFileDataQurlTool", () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.file_name).toBe("sample.pdf");
       expect(parsed.qurl_site).toBeUndefined();
+
+      vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+        new Response(JSON.stringify({ resource_id: "r_upload12345" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      const bareDataUrlResult = await tool.handler({
+        file_base64: `data:;base64,${fixtureBase64}`,
+        file_name: "sample.pdf",
+        content_type: "application/pdf",
+      });
+      expect(JSON.parse(bareDataUrlResult.content[0].text).file_name).toBe("sample.pdf");
     });
 
     it("rejects mismatched data URL, filename, and file signatures before upload", async () => {

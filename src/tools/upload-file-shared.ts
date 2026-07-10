@@ -42,13 +42,6 @@ export type ConnectorConfig = {
   uploadUrl: string;
 };
 
-type ConnectorErrorBody = {
-  error?: { code?: string; detail?: string; message?: string; type?: string; instance?: string };
-  code?: string;
-  detail?: string;
-  message?: string;
-};
-
 export function getConnectorConfig(allowServerApiKeyFallback = true): ConnectorConfig {
   const serverApiKey = allowServerApiKeyFallback
     ? (process.env.QURL_API_KEY?.trim() ?? loadRuntimeConfig().qurlApiKey)
@@ -175,6 +168,7 @@ export function validateFileSignature(fileData: Uint8Array, contentType: string)
     (contentType === "image/webp" &&
       bytes.length >= 16 &&
       ascii(0, 4) === "RIFF" &&
+      bytes.readUInt32LE(4) + 8 === bytes.length &&
       ascii(8, 12) === "WEBP" &&
       ["VP8 ", "VP8L", "VP8X"].includes(ascii(12, 16)));
   if (!valid) {
@@ -199,12 +193,24 @@ function extractConnectorError(parsed: unknown): {
   type?: string;
   instance?: string;
 } {
-  const body = (parsed ?? {}) as ConnectorErrorBody;
+  const body =
+    typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
+  const nestedError =
+    typeof body.error === "object" && body.error !== null
+      ? (body.error as Record<string, unknown>)
+      : {};
+  const stringField = (record: Record<string, unknown>, field: string): string | undefined =>
+    typeof record[field] === "string" ? record[field] : undefined;
   return {
-    code: body.error?.code ?? body.code ?? "connector_upload_failed",
-    detail: body.error?.detail ?? body.error?.message ?? body.detail ?? body.message,
-    type: body.error?.type,
-    instance: body.error?.instance,
+    code:
+      stringField(nestedError, "code") ?? stringField(body, "code") ?? "connector_upload_failed",
+    detail:
+      stringField(nestedError, "detail") ??
+      stringField(nestedError, "message") ??
+      stringField(body, "detail") ??
+      stringField(body, "message"),
+    type: stringField(nestedError, "type"),
+    instance: stringField(nestedError, "instance"),
   };
 }
 

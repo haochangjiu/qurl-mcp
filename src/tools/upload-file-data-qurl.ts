@@ -85,7 +85,7 @@ function normalizeBase64Input(input: string): {
   // Step 1: Parse and strip the data URL prefix if present (e.g.,
   // "data:image/png;base64,"). Return its media type so callers do not need
   // to parse the same prefix again.
-  const dataUrl = /^data:([^;,]+);base64,/i.exec(trimmed);
+  const dataUrl = /^data:([^;,]*);base64,/i.exec(trimmed);
   const withoutDataUrl = dataUrl ? trimmed.slice(dataUrl[0].length) : trimmed;
 
   // Step 2: Remove whitespace (base64 from copy-paste often has line breaks)
@@ -120,13 +120,16 @@ function normalizeBase64Input(input: string): {
 
   // Already properly padded
   if (paddingNeeded === 0) {
-    return { base64: normalized, dataUrlContentType: dataUrl?.[1].toLowerCase() };
+    return {
+      base64: normalized,
+      dataUrlContentType: dataUrl?.[1] ? dataUrl[1].toLowerCase() : undefined,
+    };
   }
 
   // Add missing padding (mod 4 = 2 needs "==", mod 4 = 3 needs "=")
   return {
     base64: normalized.padEnd(normalized.length + (4 - paddingNeeded), "="),
-    dataUrlContentType: dataUrl?.[1].toLowerCase(),
+    dataUrlContentType: dataUrl?.[1] ? dataUrl[1].toLowerCase() : undefined,
   };
 }
 

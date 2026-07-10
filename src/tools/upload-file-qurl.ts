@@ -65,13 +65,28 @@ export const uploadFileQurlSchema = z.object({
 
 export type UploadFileQurlInput = z.infer<typeof uploadFileQurlSchema>;
 
-async function readFileWithinLimit(fileHandle: FileHandle, maxBytes: number): Promise<Uint8Array> {
+async function readFileWithinLimit(
+  fileHandle: FileHandle,
+  maxBytes: number,
+  initialSize: number,
+): Promise<Uint8Array> {
   // Read at most one byte beyond the limit. Unlike FileHandle.readFile(), this
-  // remains bounded if the file grows after the initial stat.
-  const buffer = Buffer.allocUnsafe(maxBytes + 1);
+  // remains bounded if the file grows after the initial stat. Start near the
+  // observed size so a small file does not reserve the full configured limit.
+  let buffer = Buffer.allocUnsafe(Math.min(maxBytes + 1, Math.max(1, initialSize + 1)));
   let totalBytesRead = 0;
 
-  while (totalBytesRead < buffer.byteLength) {
+  while (true) {
+    if (totalBytesRead === buffer.byteLength) {
+      if (totalBytesRead > maxBytes) break;
+      const nextCapacity = Math.min(
+        maxBytes + 1,
+        Math.max(buffer.byteLength * 2, buffer.byteLength + 64 * 1024),
+      );
+      const expanded = Buffer.allocUnsafe(nextCapacity);
+      buffer.copy(expanded, 0, 0, totalBytesRead);
+      buffer = expanded;
+    }
     const { bytesRead } = await fileHandle.read(
       buffer,
       totalBytesRead,
@@ -131,7 +146,7 @@ export async function uploadLocalFileAndMint(
     if (sourceStat.size > maxBytes) {
       throw new Error("File exceeds the configured upload size limit.");
     }
-    fileData = await readFileWithinLimit(fileHandle, maxBytes);
+    fileData = await readFileWithinLimit(fileHandle, maxBytes, sourceStat.size);
   } finally {
     await fileHandle.close();
   }

@@ -5,6 +5,7 @@ import { getRequestQurlApiKey } from "../auth/request-context.js";
 import { loadRuntimeConfig } from "../config.js";
 import { isEmailAddress, uniqueRecipients } from "../email-addresses.js";
 import type { EmailDeliveryRecipientResult, EmailDeliveryResult } from "../email-types.js";
+import { formatErrorForLog } from "../logging.js";
 
 // Nodemailer v9 does not publish bundled declarations. @types/nodemailer v8
 // is the current DefinitelyTyped line for TypeScript 6 and covers the
@@ -18,6 +19,13 @@ export interface EmailMessageInput {
 
 export interface EmailMessageOptions {
   allowServerApiKeyFallback?: boolean;
+}
+
+export function hasEmailQuotaTrackingCapacity(
+  principalAlreadyTracked: boolean,
+  trackedPrincipalCount: number,
+): boolean {
+  return principalAlreadyTracked || trackedPrincipalCount < 10_000;
 }
 
 type EmailQuota = { recipients: number; windowStartedAt: number };
@@ -127,6 +135,7 @@ export async function sendEmailMessage(
       attempted: false,
       enabled: true,
       recipients,
+      sent: 0,
       failed: blockedRecipients.length,
       skipped_reason: "No recipient matched the configured SMTP recipient allowlist.",
       results: blockedRecipientResults(blockedRecipients),
@@ -143,7 +152,9 @@ export async function sendEmailMessage(
   for (const [key, quota] of emailQuotaByPrincipal) {
     if (now - quota.windowStartedAt >= EMAIL_QUOTA_WINDOW_MS) emailQuotaByPrincipal.delete(key);
   }
-  if (!emailQuotaByPrincipal.has(principal) && emailQuotaByPrincipal.size >= 10_000) {
+  if (
+    !hasEmailQuotaTrackingCapacity(emailQuotaByPrincipal.has(principal), emailQuotaByPrincipal.size)
+  ) {
     // Fail closed instead of evicting a live principal. LRU eviction would let
     // an attacker cycle keys until a prior key's quota state disappears, then
     // reuse that key to bypass the hourly recipient limit.
@@ -200,11 +211,11 @@ export async function sendEmailMessage(
           message_id: sent.messageId,
         });
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Email delivery to one recipient failed (${formatErrorForLog(error)})`);
         results.push({
           email: recipient,
           success: false,
-          error: errorMessage,
+          error: "Email delivery failed.",
         });
       }
     }

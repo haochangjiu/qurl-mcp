@@ -3,8 +3,9 @@ type ConsoleMethodName = "warn" | "error";
 const PATCH_FLAG = Symbol.for("qurl-mcp.consoleTimestampPatched");
 // Keep this aligned with the qURL API-key format. Bearer-form credentials are
 // redacted independently, but a bare key in an upstream error depends on this
-// prefix-aware pattern.
-const QURL_API_KEY_PATTERN = /\blv_[A-Za-z0-9_-]+\b/g;
+// prefix-aware pattern. Supported qURL keys always use `lv_`; an arbitrary
+// non-prefixed secret cannot be identified safely from unstructured text.
+const QURL_API_KEY_PATTERN = /lv_[A-Za-z0-9_-]+/g;
 
 function formatTimestamp(date = new Date()): string {
   return date.toISOString().replace("T", " ").replace("Z", " UTC");

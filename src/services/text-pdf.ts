@@ -4,6 +4,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { isControlCodePoint } from "../text.js";
 
 const bundledFontPath = fileURLToPath(
   new URL("../../assets/fonts/NotoSansSC-VF.ttf", import.meta.url),
@@ -14,7 +15,7 @@ function sanitizePdfText(input: string, fallback: string): string {
   let replacingControlCharacters = false;
   for (const character of input) {
     const codePoint = character.codePointAt(0) ?? 0;
-    const isControlCharacter = codePoint <= 31 || codePoint === 127;
+    const isControlCharacter = isControlCodePoint(codePoint);
     if (isControlCharacter) {
       if (!replacingControlCharacters) sanitized += " ";
     } else {

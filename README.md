@@ -63,6 +63,9 @@ whose filesystem access is limited to intended shareable content. HTTP mode
 never registers this host-file tool.
 The byte/text tools are also available in stdio so local clients can share
 in-chat attachments without first materializing them at a known host path.
+Connector upload and qURL minting are separate operations. If minting fails
+after upload, the connector currently has no delete endpoint; the server logs
+the orphaned `resource_id` for operator cleanup and returns the mint failure.
 There is intentionally no application-level path allowlist: symlinks and
 time-of-check/time-of-use races make a lexical prefix check a misleading
 security boundary. Use a dedicated OS account, container, or read-only mount
@@ -172,6 +175,9 @@ host logs a startup warning because API keys and qURL data are sent without
 transport encryption; use HTTPS whenever the traffic is not already protected
 by a trusted private transport. Upload connector URLs remain HTTPS-only except
 for loopback development endpoints.
+Connector destinations are trusted operator configuration rather than caller
+input; private addresses and DNS resolution are therefore permitted. Pin the
+connector hostname in deployment DNS and do not point it at metadata services.
 
 API and connector base URLs that contain embedded credentials, a query string,
 or a fragment are now rejected during startup. Deployments that previously used
@@ -203,6 +209,10 @@ These settings are used when email delivery is requested by tools such as:
 
 If either recipient allowlist is configured, only an exact address or domain
 match is delivered. If both are empty, the message and hourly caps still apply.
+In HTTP mode, any caller with a valid qURL API key can request a server-side
+SMTP delivery. Configure `allowedRecipients` or `allowedRecipientDomains`
+before enabling SMTP on an Internet-facing HTTP deployment; empty allowlists
+permit delivery to any syntactically valid address subject to the quotas.
 The SMTP transport uses bounded connection/socket timeouts and is closed after
 each delivery batch. Failed SMTP attempts still consume quota so repeated
 failures cannot bypass the abuse limit.
@@ -274,6 +284,8 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 Because `/mcp` rate limits are keyed by client IP, reverse-proxy deployments
 must set the correct hop count or all callers behind the proxy will share the
 proxy's single rate-limit bucket.
+There is no separate per-key bucket; callers sharing one source IP also share
+the configured allowance.
 Bearer credentials are conclusively validated by the first successful
 downstream qURL API call. Until then, sessions use the smaller pending-session cap and one-minute
 validation deadline, so arbitrary non-empty bearer strings cannot occupy the full

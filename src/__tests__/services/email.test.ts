@@ -17,7 +17,11 @@ vi.mock("nodemailer", () => ({
 }));
 
 import { clearRuntimeConfigCache } from "../../config.js";
-import { clearEmailQuotaState, sendEmailMessage } from "../../services/email.js";
+import {
+  clearEmailQuotaState,
+  hasEmailQuotaTrackingCapacity,
+  sendEmailMessage,
+} from "../../services/email.js";
 
 describe("sendEmailMessage", () => {
   const originalConfigPath = process.env.QURL_MCP_CONFIG;
@@ -320,8 +324,9 @@ describe("sendEmailMessage", () => {
     );
     process.env.QURL_MCP_CONFIG = configPath;
     nodemailerMocks.sendMail
-      .mockRejectedValueOnce(new Error("recipient mailbox unavailable"))
+      .mockRejectedValueOnce(new Error("smtp.internal: recipient mailbox unavailable"))
       .mockResolvedValueOnce({ messageId: "msg-2" });
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const result = await sendEmailMessage({
       to: ["first@example.com", "second@example.com"],
@@ -338,7 +343,7 @@ describe("sendEmailMessage", () => {
           expect.objectContaining({
             email: "first@example.com",
             success: false,
-            error: "recipient mailbox unavailable",
+            error: "Email delivery failed.",
           }),
           expect.objectContaining({
             email: "second@example.com",
@@ -348,6 +353,8 @@ describe("sendEmailMessage", () => {
         ],
       }),
     );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("recipient mailbox unavailable"));
+    expect(JSON.stringify(result)).not.toContain("smtp.internal");
     expect(nodemailerMocks.close).toHaveBeenCalledOnce();
   });
 
@@ -418,7 +425,20 @@ describe("sendEmailMessage", () => {
         skipped: true,
       }),
     );
+
+    const allBlocked = await sendEmailMessage({
+      to: ["blocked@elsewhere.test"],
+      subject: "Secure link ready",
+      text: "Body",
+    });
+    expect(allBlocked).toEqual(expect.objectContaining({ attempted: false, sent: 0, failed: 1 }));
     expect(nodemailerMocks.close).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when a new principal would exceed quota tracking capacity", () => {
+    expect(hasEmailQuotaTrackingCapacity(true, 10_000)).toBe(true);
+    expect(hasEmailQuotaTrackingCapacity(false, 9_999)).toBe(true);
+    expect(hasEmailQuotaTrackingCapacity(false, 10_000)).toBe(false);
   });
 
   it("enforces and resets the per-key fixed hourly recipient quota", async () => {

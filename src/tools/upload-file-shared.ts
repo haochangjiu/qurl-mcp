@@ -13,6 +13,7 @@ import {
 } from "../client.js";
 import { isLoopbackHostname, loadRuntimeConfig } from "../config.js";
 import { formatErrorForLog } from "../logging.js";
+import { isControlCodePoint } from "../text.js";
 import { RESOURCE_ID_PATTERN } from "./_shared.js";
 
 export const supportedMimeTypes = [
@@ -128,7 +129,7 @@ export function normalizeFileName(input: string) {
   }
   const hasControlCharacter = [...name].some((character) => {
     const codePoint = character.codePointAt(0) ?? 0;
-    return codePoint <= 31 || codePoint === 127;
+    return isControlCodePoint(codePoint);
   });
   if (name.length > 255 || hasControlCharacter) {
     throw new Error("file_name must be at most 255 characters and contain no control characters");
@@ -311,14 +312,24 @@ export async function mintUploadedFile(
   file: { name: string; contentType: string; sizeBytes: number },
   input: MintLinkInput,
 ) {
-  const minted = await client.mintLink(resourceId, {
-    label: input.label,
-    expires_in: input.expires_in,
-    one_time_use: input.one_time_use ?? true,
-    max_sessions: input.max_sessions,
-    session_duration: input.session_duration,
-    access_policy: input.access_policy,
-  });
+  let minted: Awaited<ReturnType<IQURLClient["mintLink"]>>;
+  try {
+    minted = await client.mintLink(resourceId, {
+      label: input.label,
+      expires_in: input.expires_in,
+      one_time_use: input.one_time_use ?? true,
+      max_sessions: input.max_sessions,
+      session_duration: input.session_duration,
+      access_policy: input.access_policy,
+    });
+  } catch (error) {
+    // The connector API currently exposes upload but no delete endpoint. Keep
+    // the mint error primary and log the orphan resource for operator cleanup.
+    console.error(
+      `Connector resource ${resourceId} remains after link minting failed (${formatErrorForLog(error)})`,
+    );
+    throw error;
+  }
 
   let qurlSite: string | undefined;
   try {

@@ -269,8 +269,10 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
     res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
 
     if (!range) {
       res.setHeader("Content-Length", fileSize);
@@ -401,8 +403,9 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
         }
 
         // Reserve both a live-session slot and an unvalidated-session slot
-        // before the first initialization await. This keeps concurrent
-        // initialize requests from overshooting either configured cap.
+        // before the first initialization await. Keep the cap checks through
+        // this increment free of await points so concurrent initialize
+        // requests cannot overshoot either configured cap.
         pendingInitializations += 1;
 
         try {
@@ -690,6 +693,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   }
 
   return {
+    // start/close are embedding APIs; the observation, streaming, and sweep
+    // hooks are intentionally exposed as deterministic test seams.
     app,
     closeAllSessions,
     getActiveSessionCount,

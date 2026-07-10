@@ -149,6 +149,28 @@ describe("uploadFileDataQurlTool", () => {
       expect(tool.outputSchema.safeParse(result.structuredContent).success).toBe(true);
     });
 
+    it("logs the connector resource for cleanup when link minting fails", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ resource_id: "r_orphan12345" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const tool = uploadFileDataQurlTool(
+        makeMockClient({ mintLink: vi.fn().mockRejectedValue(new Error("mint unavailable")) }),
+      );
+
+      await expect(
+        tool.handler({
+          file_base64: fixtureBase64,
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toThrow("mint unavailable");
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("r_orphan12345"));
+    });
+
     it("accepts data URLs in file_base64", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(
         new Response(JSON.stringify({ resource_id: "r_upload12345" }), {
@@ -380,6 +402,43 @@ describe("uploadFileDataQurlTool", () => {
           content_type: "application/pdf",
         }),
       ).rejects.toThrow("Decoded file exceeds the allowed upload size");
+    });
+
+    it("rejects connector responses above the 64 KiB cap", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(new Response("x".repeat(64 * 1024 + 1)));
+      const tool = uploadFileDataQurlTool(makeMockClient());
+
+      await expect(
+        tool.handler({
+          file_base64: fixtureBase64,
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toMatchObject<QURLAPIError>({ code: "connector_response_too_large" });
+    });
+
+    it.each([
+      {
+        name: "timeout",
+        error: Object.assign(new Error("timed out"), { name: "TimeoutError" }),
+        code: "connector_timeout",
+      },
+      {
+        name: "network failure",
+        error: new Error("connection refused"),
+        code: "connector_unreachable",
+      },
+    ])("maps connector $name without exposing fetch errors", async ({ error, code }) => {
+      globalThis.fetch = vi.fn().mockRejectedValue(error);
+      const tool = uploadFileDataQurlTool(makeMockClient());
+
+      await expect(
+        tool.handler({
+          file_base64: fixtureBase64,
+          file_name: "sample.pdf",
+          content_type: "application/pdf",
+        }),
+      ).rejects.toMatchObject<QURLAPIError>({ code, statusCode: 0 });
     });
 
     it("throws a typed error when the connector upload fails", async () => {

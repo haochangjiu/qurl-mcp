@@ -19,6 +19,9 @@ describe("getConnectorUploadUrl", () => {
     expect(getConnectorUploadUrl("http://127.42.0.7:8080")).toBe(
       "http://127.42.0.7:8080/api/upload",
     );
+    expect(getConnectorUploadUrl("http://127.255.255.255:8080")).toBe(
+      "http://127.255.255.255:8080/api/upload",
+    );
     expect(getConnectorUploadUrl("http://2130706433:8080")).toBe(
       "http://127.0.0.1:8080/api/upload",
     );
@@ -29,6 +32,8 @@ describe("getConnectorUploadUrl", () => {
       "http://[::ffff:7f00:1]:8080/api/upload",
     );
     expect(() => getConnectorUploadUrl("http://connector.example.com")).toThrow("must use HTTPS");
+    expect(() => getConnectorUploadUrl("http://192.0.2.1:8080")).toThrow("must use HTTPS");
+    expect(() => getConnectorUploadUrl("http://[2001:db8::1]:8080")).toThrow("must use HTTPS");
   });
 
   it("allows operator-configured HTTPS connectors on private networks", () => {

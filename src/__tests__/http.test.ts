@@ -705,6 +705,8 @@ describe("public video range streaming", () => {
     const explicit = await fetch(`${baseUrl}/file`, { headers: { range: "bytes=0-3" } });
     expect(explicit.status).toBe(206);
     expect(explicit.headers.get("content-range")).toBe(`bytes 0-3/${fixtureSize}`);
+    expect(explicit.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(explicit.headers.get("x-frame-options")).toBe("DENY");
     expect((await explicit.arrayBuffer()).byteLength).toBe(4);
 
     const suffix = await fetch(`${baseUrl}/file`, { headers: { range: "bytes=-5" } });

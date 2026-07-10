@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
@@ -96,13 +96,18 @@ export function uploadFileQurlTool(client: IQURLClient) {
       validateFileNameContentType(fileName, contentType);
 
       const maxBytes = getMaxUploadFileBytes();
-      const sourceStat = await stat(sourcePath);
-      if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
-      if (sourceStat.size > maxBytes) {
-        throw new Error("File exceeds the configured upload size limit.");
+      const fileHandle = await open(sourcePath, "r");
+      let fileData: Uint8Array;
+      try {
+        const sourceStat = await fileHandle.stat();
+        if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
+        if (sourceStat.size > maxBytes) {
+          throw new Error("File exceeds the configured upload size limit.");
+        }
+        fileData = await fileHandle.readFile();
+      } finally {
+        await fileHandle.close();
       }
-
-      const fileData = await readFile(sourcePath);
       if (fileData.byteLength > maxBytes) {
         throw new Error("File exceeds the configured upload size limit.");
       }

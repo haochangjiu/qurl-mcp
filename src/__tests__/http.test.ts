@@ -1,4 +1,5 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { statSync } from "node:fs";
 import { createServer as createNodeServer, request, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
@@ -194,7 +195,9 @@ describe("public video range streaming", () => {
 
   async function startVideoServer(): Promise<string> {
     const videoApp = express();
-    videoApp.get("/file", (req, res) => streamPublicVideo(req, res, fixturePath));
+    videoApp.get("/file", rateLimit({ windowMs: 60_000, limit: 100 }), (req, res) =>
+      streamPublicVideo(req, res, fixturePath),
+    );
     return start(videoApp);
   }
 

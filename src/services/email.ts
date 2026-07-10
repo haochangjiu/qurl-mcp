@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getRequestQurlApiKey } from "../auth/request-context.js";
 import { loadRuntimeConfig } from "../config.js";
@@ -13,6 +13,7 @@ export interface EmailMessageInput {
 type EmailQuota = { recipients: number; windowStartedAt: number };
 const emailQuotaByPrincipal = new Map<string, EmailQuota>();
 const EMAIL_QUOTA_WINDOW_MS = 60 * 60 * 1000;
+const EMAIL_QUOTA_HMAC_KEY = randomBytes(32);
 
 export function clearEmailQuotaState(): void {
   emailQuotaByPrincipal.clear();
@@ -94,7 +95,7 @@ export async function sendEmailMessage(input: EmailMessageInput): Promise<EmailD
   }
 
   const principalKey = getRequestQurlApiKey() ?? runtimeConfig.qurlApiKey ?? "unscoped";
-  const principal = createHash("sha256").update(principalKey).digest("hex");
+  const principal = createHmac("sha256", EMAIL_QUOTA_HMAC_KEY).update(principalKey).digest("hex");
   const now = Date.now();
   for (const [key, quota] of emailQuotaByPrincipal) {
     if (now - quota.windowStartedAt >= EMAIL_QUOTA_WINDOW_MS) emailQuotaByPrincipal.delete(key);

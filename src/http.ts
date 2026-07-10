@@ -552,12 +552,9 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   }
 
   for (const document of getLegalDocuments()) {
+    const html = renderLegalDocumentHtml(document.path, baseUrl);
+    if (!html) continue;
     app.get(document.path, (_req, res) => {
-      const html = renderLegalDocumentHtml(document.path, baseUrl);
-      if (!html) {
-        res.status(404).send("Not found");
-        return;
-      }
       setPublicPageSecurityHeaders(res);
       res.type("html").send(html);
     });
@@ -567,11 +564,11 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const publicVideo = config.publicVideo;
     const videoPagePath = publicVideo.pagePath;
     const videoFileRoute = getPublicVideoFileRoute(videoPagePath);
+    const videoPageHtml = renderPublicVideoPageHtml(publicVideo, baseUrl);
 
     app.get(videoPagePath, (_req, res) => {
-      const html = renderPublicVideoPageHtml(publicVideo, baseUrl);
       setPublicPageSecurityHeaders(res);
-      res.type("html").send(html);
+      res.type("html").send(videoPageHtml);
     });
 
     app.get(videoFileRoute, publicFileRateLimiter, (req, res) => {

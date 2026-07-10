@@ -2,13 +2,13 @@ import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
-import { formatErrorForLog } from "../logging.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
 import {
   getConnectorConfig,
   getMaxUploadFileBytes,
   inferContentType,
+  mintUploadedFile,
   normalizeFileName,
   supportedMimeTypes,
   uploadToConnector,
@@ -98,40 +98,12 @@ export async function uploadLocalFileAndMint(
   }
   validateFileSignature(fileData, contentType);
   const upload = await uploadToConnector(fileData, fileName, contentType, connectorConfig);
-
-  const mintInput = {
-    label: input.label,
-    expires_in: input.expires_in,
-    one_time_use: input.one_time_use ?? true,
-    max_sessions: input.max_sessions,
-    session_duration: input.session_duration,
-    access_policy: input.access_policy,
-  };
-  const minted = await client.mintLink(upload.resource_id, mintInput);
-
-  let qurlSite: string | undefined;
-  try {
-    qurlSite = (await client.getQURL(upload.resource_id)).data.qurl_site;
-  } catch (err) {
-    // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
-    console.error(
-      `Failed to fetch qurl_site for resource ${upload.resource_id} (${formatErrorForLog(err)})`,
-    );
-    qurlSite = undefined;
-  }
-
-  return {
-    resource_id: upload.resource_id,
-    qurl_id: minted.data.qurl_id,
-    qurl_link: minted.data.qurl_link,
-    qurl_site: qurlSite,
-    expires_at: minted.data.expires_at,
-    file_name: fileName,
-    content_type: contentType,
-    size_bytes: fileData.byteLength,
-    branded_domain: minted.data.branded_domain,
-    type: minted.data.type,
-  };
+  return mintUploadedFile(
+    client,
+    upload.resource_id,
+    { name: fileName, contentType, sizeBytes: fileData.byteLength },
+    input,
+  );
 }
 
 export function uploadFileQurlTool(client: IQURLClient) {

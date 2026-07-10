@@ -35,7 +35,15 @@ function prefixArgs(args: unknown[]): unknown[] {
     return [prefix.trimEnd()];
   }
 
-  const [first, ...rest] = args;
+  // Make redaction the console boundary rather than a call-site convention.
+  // Strings cover interpolated values; Error objects cover the other common
+  // logging form without dumping an unredacted stack or attached properties.
+  const safeArgs = args.map((arg) => {
+    if (typeof arg === "string") return sanitizeLogValue(arg);
+    if (arg instanceof Error) return formatErrorForLog(arg);
+    return arg;
+  });
+  const [first, ...rest] = safeArgs;
   if (typeof first === "string") {
     return [`${prefix}${first}`, ...rest];
   }

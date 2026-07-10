@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
-import { formatErrorForLog } from "../logging.js";
 import { accessPolicySchema } from "./create-qurl.js";
 import {
   toStructuredContent,
@@ -13,6 +12,7 @@ import { emailDeliveryInputSchema, maybeDeliverToolEmail } from "./email-deliver
 import {
   getConnectorConfig,
   getMaxUploadFileBytes,
+  mintUploadedFile,
   normalizeFileName,
   supportedMimeTypes,
   uploadToConnector,
@@ -204,40 +204,16 @@ export function uploadFileDataQurlTool(
         connectorConfig,
       );
 
-      const mintInput = {
-        label: input.label,
-        expires_in: input.expires_in,
-        one_time_use: input.one_time_use ?? true,
-        max_sessions: input.max_sessions,
-        session_duration: input.session_duration,
-        access_policy: input.access_policy,
-      };
-
-      const minted = await client.mintLink(upload.resource_id, mintInput);
-
-      let qurlSite: string | undefined;
-      try {
-        qurlSite = (await client.getQURL(upload.resource_id)).data.qurl_site;
-      } catch (err) {
-        // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
-        console.error(
-          `Failed to fetch qurl_site for resource ${upload.resource_id} (${formatErrorForLog(err)})`,
-        );
-        qurlSite = undefined;
-      }
-
-      const result = {
-        resource_id: upload.resource_id,
-        qurl_id: minted.data.qurl_id,
-        qurl_link: minted.data.qurl_link,
-        qurl_site: qurlSite,
-        expires_at: minted.data.expires_at,
-        file_name: fileName,
-        content_type: input.content_type,
-        size_bytes: fileData.byteLength,
-        branded_domain: minted.data.branded_domain,
-        type: minted.data.type,
-      };
+      const result = await mintUploadedFile(
+        client,
+        upload.resource_id,
+        {
+          name: fileName,
+          contentType: input.content_type,
+          sizeBytes: fileData.byteLength,
+        },
+        input,
+      );
 
       const emailResult = await maybeDeliverToolEmail({
         allowServerApiKeyFallback: runtime.mode === "stdio",

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uniqueRecipients } from "../email-addresses.js";
 import type { EmailDeliveryResult } from "../email-types.js";
 import { formatErrorForLog } from "../logging.js";
 import { sendEmailMessage } from "../services/email.js";
@@ -59,13 +60,10 @@ export async function maybeDeliverToolEmail(
     // delivery failure into a failed tool call because qurl_link is one-shot
     // output that cannot be recovered later.
     console.error(`Email delivery failed after qURL creation (${formatErrorForLog(error)})`);
-    const recipients = Array.from(
-      new Set(input.delivery.to.map((recipient) => recipient.trim().toLowerCase()).filter(Boolean)),
-    );
     return {
       attempted: false,
       enabled: true,
-      recipients,
+      recipients: uniqueRecipients(input.delivery.to),
       skipped_reason: "Email delivery was not attempted because delivery setup failed.",
     };
   }

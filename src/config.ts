@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
+import { isEmailAddress } from "./email-addresses.js";
 
 export interface SmtpConfig {
   host: string;
@@ -277,10 +278,6 @@ function resolvePublicVideoConfig(
   };
 }
 
-function resolveQurlApiKey(): string | undefined {
-  return trimString(process.env.QURL_API_KEY);
-}
-
 function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpConfig | undefined {
   const { host, port, secure, username, password, fromEmail, fromName } =
     resolveSmtpFieldValues(fileConfig);
@@ -289,7 +286,6 @@ function resolveSmtpConfig(fileConfig: Partial<SmtpConfig> | undefined): SmtpCon
     return undefined;
   }
 
-  const isEmailAddress = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   if (!isEmailAddress(fromEmail)) {
     throw new Error("SMTP fromEmail must be a valid email address.");
   }
@@ -392,7 +388,7 @@ export function loadRuntimeConfig(configPath = getDefaultConfigPath()): RuntimeC
     maxUploadFileDataBytes,
     defaultQurlApiUrl,
     defaultQurlConnectorUrl,
-    qurlApiKey: resolveQurlApiKey(),
+    qurlApiKey: trimString(process.env.QURL_API_KEY),
     smtp: resolveSmtpConfig(fileConfig.smtp),
     publicVideo: resolvePublicVideoConfig(fileConfig.publicVideo),
   };

@@ -5,8 +5,14 @@ import {
   getRequestQurlApiKey,
   getRequestQurlConnectorUrl,
 } from "../auth/request-context.js";
-import { MISSING_API_KEY_MESSAGE, QURLAPIError } from "../client.js";
+import {
+  MISSING_API_KEY_MESSAGE,
+  QURLAPIError,
+  type IQURLClient,
+  type MintLinkInput,
+} from "../client.js";
 import { isLoopbackHostname, loadRuntimeConfig } from "../config.js";
+import { formatErrorForLog } from "../logging.js";
 import { RESOURCE_ID_PATTERN } from "./_shared.js";
 
 export const supportedMimeTypes = [
@@ -293,6 +299,45 @@ async function processConnectorResponse(response: Response): Promise<ConnectorUp
   }
 
   return { resource_id: resourceId };
+}
+
+export async function mintUploadedFile(
+  client: IQURLClient,
+  resourceId: string,
+  file: { name: string; contentType: string; sizeBytes: number },
+  input: MintLinkInput,
+) {
+  const minted = await client.mintLink(resourceId, {
+    label: input.label,
+    expires_in: input.expires_in,
+    one_time_use: input.one_time_use ?? true,
+    max_sessions: input.max_sessions,
+    session_duration: input.session_duration,
+    access_policy: input.access_policy,
+  });
+
+  let qurlSite: string | undefined;
+  try {
+    qurlSite = (await client.getQURL(resourceId)).data.qurl_site;
+  } catch (error) {
+    // Non-fatal: qurl_site is optional metadata. Log for debugging but don't fail the upload.
+    console.error(
+      `Failed to fetch qurl_site for resource ${resourceId} (${formatErrorForLog(error)})`,
+    );
+  }
+
+  return {
+    resource_id: resourceId,
+    qurl_id: minted.data.qurl_id,
+    qurl_link: minted.data.qurl_link,
+    qurl_site: qurlSite,
+    expires_at: minted.data.expires_at,
+    file_name: file.name,
+    content_type: file.contentType,
+    size_bytes: file.sizeBytes,
+    branded_domain: minted.data.branded_domain,
+    type: minted.data.type,
+  };
 }
 
 async function fetchConnector(

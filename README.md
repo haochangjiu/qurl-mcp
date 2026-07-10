@@ -282,6 +282,16 @@ protocol introspection available before the first qURL operation, while the
 pending-session cap, absolute deadline, and request rate limit bound invalid-key
 slot usage. The MCP middleware does not validate the key itself; only a
 successful downstream qURL API response promotes the session.
+Consequently, any caller with a non-empty bearer can enumerate the public
+tool/resource/prompt catalog and briefly hold bounded pending-session state. On
+hostile networks, place non-loopback deployments behind an identity-aware proxy
+that preserves the caller's qURL bearer credential for `/mcp` authorization.
+
+Session caps, request rate limits, and email recipient quotas are in-memory and
+apply independently to each server process. A horizontally scaled deployment
+therefore has aggregate limits of roughly the configured value multiplied by
+its instance count; use shared edge limits or a single routed instance when a
+global cap is required.
 
 ## Configuration Priority
 

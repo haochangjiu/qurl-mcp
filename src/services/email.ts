@@ -3,6 +3,7 @@ import { hkdf, randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
 import { getRequestQurlApiKey } from "../auth/request-context.js";
 import { loadRuntimeConfig } from "../config.js";
+import { isEmailAddress, uniqueRecipients } from "../email-addresses.js";
 import type { EmailDeliveryRecipientResult, EmailDeliveryResult } from "../email-types.js";
 
 export interface EmailMessageInput {
@@ -39,16 +40,6 @@ async function deriveEmailQuotaPrincipal(principalKey: string): Promise<string> 
   });
 }
 
-function uniqueRecipients(recipients: string[]): string[] {
-  return Array.from(
-    new Set(
-      recipients
-        .map((recipient) => recipient.trim().toLowerCase())
-        .filter((recipient) => recipient.length > 0),
-    ),
-  );
-}
-
 export async function sendEmailMessage(
   input: EmailMessageInput,
   options: EmailMessageOptions = {},
@@ -61,7 +52,7 @@ export async function sendEmailMessage(
       skipped_reason: "No email recipients were provided.",
     };
   }
-  if (recipients.some((recipient) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient))) {
+  if (recipients.some((recipient) => !isEmailAddress(recipient))) {
     throw new Error("Email recipients must be valid addresses.");
   }
   if (!input.subject.trim() || input.subject.length > 200 || /[\r\n]/.test(input.subject)) {

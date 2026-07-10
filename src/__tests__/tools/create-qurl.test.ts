@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { QURLAPIError } from "../../client.js";
+import { EmailDeliverySetupError } from "../../email-types.js";
 import { createQurlTool, createQurlSchema } from "../../tools/create-qurl.js";
 import { makeMockClient, sampleCreateQURLData } from "../helpers.js";
 
@@ -336,24 +337,27 @@ describe("createQurlTool", () => {
 
     it.each([
       [
-        "SMTP connection failed",
+        new EmailDeliverySetupError("smtp", "SMTP connection failed"),
         "Email delivery was not attempted because SMTP configuration or connection failed.",
       ],
       [
-        "Request-scoped qURL credentials are unavailable",
+        new EmailDeliverySetupError(
+          "authorization",
+          "Request-scoped qURL credentials are unavailable",
+        ),
         "Email delivery authorization context was unavailable.",
       ],
       [
-        "Email subject must be a single line",
+        new EmailDeliverySetupError("input", "Email subject must be a single line"),
         "Email delivery was not attempted because recipient or message validation failed.",
       ],
       [
-        "internal setup at smtp.private failed",
+        new Error("internal setup at smtp.private failed"),
         "Email delivery was not attempted because delivery setup failed.",
       ],
     ])("returns the one-shot link with a sanitized email failure: %s", async (error, reason) => {
       const mockCreate = vi.fn().mockResolvedValue({ data: fixture });
-      vi.mocked(sendEmailMessage).mockRejectedValue(new Error(error));
+      vi.mocked(sendEmailMessage).mockRejectedValue(error);
       const tool = createQurlTool(makeMockClient({ createQURL: mockCreate }));
 
       const result = await tool.handler({

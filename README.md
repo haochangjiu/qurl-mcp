@@ -159,6 +159,31 @@ Their responsibilities are:
 | `defaultQurlApiUrl`       | Base URL of the qURL backend API                       |
 | `defaultQurlConnectorUrl` | Base URL of the upload connector                       |
 
+Shared settings have these environment overrides. Environment values take
+precedence over the shared config file.
+
+| Environment variable                        | Config field                              |
+| ------------------------------------------- | ----------------------------------------- |
+| `MCP_MAX_UPLOAD_FILE_DATA_BYTES`            | `maxUploadFileDataBytes`                  |
+| `QURL_API_URL`                              | `defaultQurlApiUrl`                       |
+| `QURL_CONNECTOR_URL`                        | `defaultQurlConnectorUrl`                 |
+| `QURL_SMTP_HOST`                            | `smtp.host`                               |
+| `QURL_SMTP_PORT`                            | `smtp.port`                               |
+| `QURL_SMTP_SECURE`                          | `smtp.secure`                             |
+| `QURL_SMTP_USERNAME`                        | `smtp.username`                           |
+| `QURL_SMTP_PASSWORD`                        | `smtp.password`                           |
+| `QURL_SMTP_FROM_EMAIL`                      | `smtp.fromEmail`                          |
+| `QURL_SMTP_FROM_NAME`                       | `smtp.fromName`                           |
+| `QURL_SMTP_ALLOWED_RECIPIENTS`              | `smtp.allowedRecipients`                  |
+| `QURL_SMTP_ALLOWED_RECIPIENT_DOMAINS`       | `smtp.allowedRecipientDomains`            |
+| `QURL_SMTP_MAX_RECIPIENTS_PER_MESSAGE`      | `smtp.maxRecipientsPerMessage`            |
+| `QURL_SMTP_MAX_RECIPIENTS_PER_HOUR`         | `smtp.maxRecipientsPerHour`               |
+| `QURL_PUBLIC_VIDEO_FILE_PATH`               | `publicVideo.filePath`                    |
+| `QURL_PUBLIC_VIDEO_TITLE`                   | `publicVideo.title`                       |
+| `QURL_PUBLIC_VIDEO_PAGE_PATH`               | `publicVideo.pagePath`                    |
+
+`QURL_API_KEY` is intentionally environment-only and has no config-file field.
+
 Raising `maxUploadFileDataBytes` also raises the HTTP JSON parser's per-request
 memory ceiling to roughly 1.5 times that value (up to about 150 MB at the
 100 MB maximum), before base64 decoding applies the exact byte cap. Size this
@@ -252,6 +277,7 @@ When configured, the HTTP server additionally exposes:
 | `allowedHosts`                 | Host allowlist for Host header validation                                           |
 | `trustProxyHops`               | Exact trusted reverse-proxy hop count (default `0`)                                 |
 | `maxSessions`                  | Hard cap on live MCP sessions (default `1000`)                                      |
+| `maxSessionsPerCredential`     | Per-bearer live and initializing session cap (default `20`)                         |
 | `maxUnvalidatedSessions`       | Cap on sessions that have not completed a downstream qURL API call (default `100`)  |
 | `sessionIdleTtlMs`             | Idle session eviction window (default 15 minutes)                                   |
 | `unvalidatedSessionTtlMs`      | Absolute validation deadline for never-validated bearer sessions (default 1 minute) |
@@ -268,6 +294,7 @@ HTTP fields have matching environment overrides:
 | `MCP_ALLOWED_HOSTS`                     | `allowedHosts`                    |
 | `MCP_TRUST_PROXY_HOPS`                  | `trustProxyHops`                  |
 | `MCP_MAX_SESSIONS`                      | `maxSessions`                     |
+| `MCP_MAX_SESSIONS_PER_CREDENTIAL`       | `maxSessionsPerCredential`        |
 | `MCP_MAX_UNVALIDATED_SESSIONS`          | `maxUnvalidatedSessions`          |
 | `MCP_SESSION_IDLE_TTL_MS`               | `sessionIdleTtlMs`                |
 | `MCP_UNVALIDATED_SESSION_TTL_MS`        | `unvalidatedSessionTtlMs`         |
@@ -282,17 +309,18 @@ The listener defaults to `127.0.0.1`. A non-loopback `host` is rejected unless
 Because `/mcp` rate limits are keyed by client IP, reverse-proxy deployments
 must set the correct hop count or all callers behind the proxy will share the
 proxy's single rate-limit bucket.
-There is no separate per-key bucket; callers sharing one source IP also share
-the configured allowance.
+There is no separate per-key request-rate bucket; callers sharing one source IP
+also share the configured request allowance. `maxSessionsPerCredential`
+separately prevents one bearer credential from occupying the full session pool.
 Bearer credentials are conclusively validated by the first successful
-downstream qURL API call. Until then, sessions use the smaller pending-session cap and one-minute
-validation deadline, so arbitrary non-empty bearer strings cannot occupy the full
-session pool for the normal 15-minute TTL. A client that performs only MCP
-introspection remains pending by design; after deadline eviction it must
-re-initialize before its next request. Both pending-session limits are
-configurable for clients with longer introspection-to-tool-call gaps. The
-deadline is absolute and applies regardless of activity, including an open SSE
-stream or a long-running first tool call.
+downstream qURL API call. Until then, sessions use the smaller pending-session
+cap and one-minute validation deadline, so arbitrary non-empty bearer strings
+cannot occupy the full session pool for the normal 15-minute TTL. A client that
+performs only MCP introspection remains pending by design; after deadline
+eviction it must re-initialize before its next request. The session caps and
+validation deadline are configurable for clients with longer
+introspection-to-tool-call gaps. The deadline is absolute and applies regardless
+of activity, including an open SSE stream or a long-running first tool call.
 Validated clients that disconnect without sending `DELETE /mcp` retain their
 bounded session slot until the idle TTL expires so an SSE reconnect can reuse
 the session. Size `maxSessions` and the idle TTL for clients that do not perform
@@ -303,9 +331,10 @@ must re-initialize. This fail-closed behavior prevents an invalid credential
 from extending its pending slot with a deliberately long-running request.
 Accepting a non-empty bearer during MCP initialization is intentional: it keeps
 protocol introspection available before the first qURL operation, while the
-pending-session cap, absolute deadline, and request rate limit bound invalid-key
-slot usage. The MCP middleware does not validate the key itself; only a
-successful downstream qURL API response promotes the session.
+global session cap, per-credential session cap, pending-session cap, absolute
+deadline, and request rate limit bound invalid-key slot usage. The MCP
+middleware does not validate the key itself; only a successful downstream qURL
+API response promotes the session.
 Consequently, any caller with a non-empty bearer can enumerate the public
 tool/resource/prompt catalog and briefly hold bounded pending-session state. On
 hostile networks, place non-loopback deployments behind an identity-aware proxy
@@ -371,7 +400,12 @@ Introspection-only sessions therefore remain unvalidated and are closed at
 session. A session is promoted only after a successful qURL API call—rejected
 or rate-limited calls do not prove the credential valid. Disconnected sessions
 remain registered until `sessionIdleTtlMs` so SSE clients can reconnect, while
-`maxSessions` bounds that reconnect allowance under churn.
+`maxSessions` and `maxSessionsPerCredential` bound that reconnect allowance
+under churn.
+
+Requests without an `Origin` header are accepted for non-browser MCP clients.
+When `Origin` is present, it must match the origin of `baseUrl`; malformed or
+cross-origin values are rejected before any route is handled.
 
 Configure remote MCP clients with:
 

@@ -32,6 +32,7 @@ describe("HTTP listener config", () => {
         port: 3000,
         trustProxyHops: 0,
         maxSessions: 1000,
+        maxSessionsPerCredential: 20,
         maxUnvalidatedSessions: 100,
         sessionIdleTtlMs: 900_000,
         unvalidatedSessionTtlMs: 60_000,
@@ -82,6 +83,7 @@ describe("HTTP listener config", () => {
       JSON.stringify({
         trustProxyHops: 1,
         maxSessions: 50,
+        maxSessionsPerCredential: 7,
         maxUnvalidatedSessions: 20,
         sessionIdleTtlMs: 60_000,
         unvalidatedSessionTtlMs: 20_000,
@@ -94,6 +96,7 @@ describe("HTTP listener config", () => {
       expect.objectContaining({
         trustProxyHops: 1,
         maxSessions: 50,
+        maxSessionsPerCredential: 7,
         maxUnvalidatedSessions: 20,
         sessionIdleTtlMs: 60_000,
         unvalidatedSessionTtlMs: 20_000,
@@ -104,6 +107,10 @@ describe("HTTP listener config", () => {
 
     process.env.MCP_TRUST_PROXY_HOPS = "11";
     expect(() => loadHttpServerConfig(configPath)).toThrow("between 0 and 10");
+
+    delete process.env.MCP_TRUST_PROXY_HOPS;
+    process.env.MCP_MAX_SESSIONS_PER_CREDENTIAL = "51";
+    expect(() => loadHttpServerConfig(configPath)).toThrow("between 1 and 50");
   });
 
   it("rejects unsafe public base URLs and Host entries with ports", () => {

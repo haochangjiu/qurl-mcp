@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { formatErrorForLog } from "../logging.js";
 import { createTextPdfTempFile } from "../services/text-pdf.js";
-import { accessPolicySchema } from "./create-qurl.js";
 import {
   allowsServerApiKeyFallback,
   withMissingApiKeyHandler,
@@ -16,59 +15,39 @@ import {
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 import { getConnectorConfig } from "./upload-file-shared.js";
 import { uploadLocalFileAndMint } from "./upload-file-qurl.js";
+import { uploadMintOptionsShape } from "./upload-mint-options.js";
 
 const supportedTextPayloadTypes = ["text", "markdown", "html", "json"] as const;
 
-export const uploadTextQurlSchema = z.object({
-  type: z
-    .enum(supportedTextPayloadTypes)
-    .describe(
-      "Source text type, such as `markdown`. In v1 this is preserved as metadata and the content is rendered into a plain-text PDF before upload.",
-    ),
-  content: z
-    .string()
-    .min(1)
-    .max(100_000)
-    .describe(
-      "Text content to render into a temporary PDF before uploading to the qURL connector.",
-    ),
-  file_name: z
-    .string()
-    .min(1)
-    .max(255)
-    .optional()
-    .describe(
-      "Filename to register with the connector. The tool will normalize it to a `.pdf` filename.",
-    ),
-  label: z
-    .string()
-    .max(500)
-    .optional()
-    .describe("Human-readable label identifying who this qURL is for (max 500 chars)"),
-  expires_in: z.string().min(1).optional().describe('Duration string (e.g., "1h", "24h", "7d")'),
-  one_time_use: z
-    .boolean()
-    .optional()
-    .describe("Whether the link can only be used once. Defaults to true for uploaded content."),
-  max_sessions: z
-    .number()
-    .int()
-    .min(0)
-    .max(1000)
-    .optional()
-    .describe("Maximum concurrent sessions for this qURL token (0 = unlimited, max 1000)"),
-  session_duration: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('How long access lasts after clicking (e.g., "1h")'),
-  access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
-  email_delivery: emailDeliveryInputSchema
-    .optional()
-    .describe(
-      "Optional email notification settings for sending the uploaded text content's qURL to one or more recipients.",
-    ),
-});
+export const uploadTextQurlSchema = z
+  .object({
+    type: z
+      .enum(supportedTextPayloadTypes)
+      .describe(
+        "Source text type, such as `markdown`. In v1 this is preserved as metadata and the content is rendered into a plain-text PDF before upload.",
+      ),
+    content: z
+      .string()
+      .min(1)
+      .max(100_000)
+      .describe(
+        "Text content to render into a temporary PDF before uploading to the qURL connector.",
+      ),
+    file_name: z
+      .string()
+      .min(1)
+      .max(255)
+      .optional()
+      .describe(
+        "Filename to register with the connector. The tool will normalize it to a `.pdf` filename.",
+      ),
+    email_delivery: emailDeliveryInputSchema
+      .optional()
+      .describe(
+        "Optional email notification settings for sending the uploaded text content's qURL to one or more recipients.",
+      ),
+  })
+  .extend(uploadMintOptionsShape);
 
 export function uploadTextQurlTool(
   client: IQURLClient,

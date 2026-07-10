@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isInsecureNonLoopbackHttpUrl, isLoopbackHostname, parseSizeBytes } from "../config.js";
+import { isLoopbackHostname, parseSizeBytes } from "../config.js";
 
 describe("service URL security helpers", () => {
   it("recognizes canonical, expanded, mapped, and numeric loopback forms", () => {
@@ -7,15 +7,12 @@ describe("service URL security helpers", () => {
     expect(isLoopbackHostname("0:0:0:0:0:0:0:1")).toBe(true);
     expect(isLoopbackHostname("::ffff:127.0.0.1")).toBe(true);
     expect(isLoopbackHostname("127.255.255.255")).toBe(true);
-    expect(isInsecureNonLoopbackHttpUrl("http://2130706433:8080")).toBe(false);
+    expect(isLoopbackHostname(new URL("http://2130706433:8080").hostname)).toBe(true);
   });
 
   it("rejects public IPv4 and IPv6 hosts from the loopback set", () => {
     expect(isLoopbackHostname("192.0.2.1")).toBe(false);
     expect(isLoopbackHostname("2001:db8::1")).toBe(false);
-    expect(isInsecureNonLoopbackHttpUrl("http://192.0.2.1")).toBe(true);
-    expect(isInsecureNonLoopbackHttpUrl("http://[2001:db8::1]")).toBe(true);
-    expect(isInsecureNonLoopbackHttpUrl("https://192.0.2.1")).toBe(false);
   });
 });
 

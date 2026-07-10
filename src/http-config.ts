@@ -17,6 +17,7 @@ export interface HttpServerConfig {
   allowedHosts?: string[];
   trustProxyHops: number;
   maxSessions: number;
+  maxSessionsPerCredential: number;
   maxUnvalidatedSessions: number;
   sessionIdleTtlMs: number;
   unvalidatedSessionTtlMs: number;
@@ -31,6 +32,7 @@ export interface HttpServerConfig {
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_MAX_SESSIONS = 1000;
+const DEFAULT_MAX_SESSIONS_PER_CREDENTIAL = 20;
 const DEFAULT_MAX_UNVALIDATED_SESSIONS = 100;
 const DEFAULT_SESSION_IDLE_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_UNVALIDATED_SESSION_TTL_MS = 60 * 1000;
@@ -150,6 +152,20 @@ export function loadHttpServerConfig(configPath = getDefaultHttpConfigPath()): H
     throw new Error("allowedHosts is required when the HTTP listener is not bound to loopback.");
   }
   const publicVideo = runtimeConfig.publicVideo ?? resolvePublicVideoFromHttpConfig(fileConfig);
+  const maxSessions = parseBoundedInteger(
+    process.env.MCP_MAX_SESSIONS ?? fileConfig.maxSessions,
+    DEFAULT_MAX_SESSIONS,
+    "MCP_MAX_SESSIONS/maxSessions",
+    1,
+    10_000,
+  );
+  const maxSessionsPerCredential = parseBoundedInteger(
+    process.env.MCP_MAX_SESSIONS_PER_CREDENTIAL ?? fileConfig.maxSessionsPerCredential,
+    Math.min(DEFAULT_MAX_SESSIONS_PER_CREDENTIAL, maxSessions),
+    "MCP_MAX_SESSIONS_PER_CREDENTIAL/maxSessionsPerCredential",
+    1,
+    maxSessions,
+  );
 
   return {
     port,
@@ -163,13 +179,8 @@ export function loadHttpServerConfig(configPath = getDefaultHttpConfigPath()): H
       0,
       10,
     ),
-    maxSessions: parseBoundedInteger(
-      process.env.MCP_MAX_SESSIONS ?? fileConfig.maxSessions,
-      DEFAULT_MAX_SESSIONS,
-      "MCP_MAX_SESSIONS/maxSessions",
-      1,
-      10_000,
-    ),
+    maxSessions,
+    maxSessionsPerCredential,
     maxUnvalidatedSessions: parseBoundedInteger(
       process.env.MCP_MAX_UNVALIDATED_SESSIONS ?? fileConfig.maxUnvalidatedSessions,
       DEFAULT_MAX_UNVALIDATED_SESSIONS,

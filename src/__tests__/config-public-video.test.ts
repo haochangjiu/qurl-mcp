@@ -118,6 +118,16 @@ describe("public video config", () => {
     expect(runtime.smtp).toBeUndefined();
   });
 
+  it("rejects malformed nested configuration objects", () => {
+    const configPath = join(tempDir!, "qurl-mcp.config.json");
+    writeFileSync(configPath, JSON.stringify({ smtp: "not-an-object" }));
+    expect(() => loadRuntimeConfig(configPath)).toThrow("smtp must be a JSON object");
+
+    clearRuntimeConfigCache();
+    writeFileSync(configPath, JSON.stringify({ publicVideo: [] }));
+    expect(() => loadRuntimeConfig(configPath)).toThrow("publicVideo must be a JSON object");
+  });
+
   it("allows environment variables to override shared public video config", () => {
     const configPath = join(tempDir!, "qurl-mcp.config.json");
     writeFileSync(

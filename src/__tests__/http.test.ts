@@ -17,6 +17,7 @@ const testConfig: HttpServerConfig = {
   baseUrl: "http://127.0.0.1:3000",
   trustProxyHops: 0,
   maxSessions: 100,
+  maxSessionsPerCredential: 10,
   maxUnvalidatedSessions: 20,
   sessionIdleTtlMs: 15 * 60 * 1000,
   unvalidatedSessionTtlMs: 60 * 1000,
@@ -498,6 +499,42 @@ describe("HTTP MCP server", () => {
     }
   });
 
+  it("caps concurrent sessions per bearer credential without blocking other credentials", async () => {
+    const cappedRuntime = createHttpRuntime(
+      {
+        ...testConfig,
+        maxSessions: 3,
+        maxSessionsPerCredential: 1,
+        maxUnvalidatedSessions: 3,
+      },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(cappedRuntime.app);
+
+    try {
+      const sameCredentialResponses = await Promise.all(
+        [1, 2].map(() =>
+          fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: bearerHeaders("lv_live_same_credential"),
+            body: JSON.stringify(initializeBody),
+          }),
+        ),
+      );
+      const otherCredentialResponse = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: bearerHeaders("lv_live_other_credential"),
+        body: JSON.stringify(initializeBody),
+      });
+
+      expect(sameCredentialResponses.map((response) => response.status).sort()).toEqual([200, 503]);
+      expect(otherCredentialResponse.status).toBe(200);
+      expect(cappedRuntime.getActiveSessionCount()).toBe(2);
+    } finally {
+      await cappedRuntime.closeAllSessions();
+    }
+  });
+
   it("enforces the unvalidated-session cap independently", async () => {
     const cappedRuntime = createHttpRuntime(
       { ...testConfig, maxSessions: 2, maxUnvalidatedSessions: 1 },
@@ -660,6 +697,33 @@ describe("HTTP MCP server", () => {
     expect((await fetch(`${baseUrl}/healthz`)).status).toBe(200);
   });
 
+  it("allows absent or same-service Origin headers and rejects cross-origin requests", async () => {
+    const baseUrl = await start();
+
+    expect((await fetch(`${baseUrl}/healthz`)).status).toBe(200);
+    expect(
+      (
+        await fetch(`${baseUrl}/healthz`, {
+          headers: { origin: testConfig.baseUrl },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await fetch(`${baseUrl}/healthz`, {
+          headers: { origin: "https://attacker.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await fetch(`${baseUrl}/healthz`, {
+          headers: { origin: "not a URL" },
+        })
+      ).status,
+    ).toBe(403);
+  });
+
   it("enforces the configured Host allowlist for non-loopback deployments", async () => {
     const allowlistedRuntime = createHttpRuntime(
       {
@@ -705,7 +769,7 @@ describe("public video range streaming", () => {
     const explicit = await fetch(`${baseUrl}/file`, { headers: { range: "bytes=0-3" } });
     expect(explicit.status).toBe(206);
     expect(explicit.headers.get("content-range")).toBe(`bytes 0-3/${fixtureSize}`);
-    expect(explicit.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
+    expect(explicit.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     expect(explicit.headers.get("x-frame-options")).toBe("DENY");
     expect((await explicit.arrayBuffer()).byteLength).toBe(4);
 

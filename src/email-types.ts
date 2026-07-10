@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+export type EmailDeliverySetupErrorKind = "authorization" | "input" | "smtp";
+
+export class EmailDeliverySetupError extends Error {
+  constructor(
+    readonly kind: EmailDeliverySetupErrorKind,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "EmailDeliverySetupError";
+  }
+}
+
 export const emailDeliveryRecipientResultSchema = z.object({
   email: z.string(),
   success: z.boolean(),

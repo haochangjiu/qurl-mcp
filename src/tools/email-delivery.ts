@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { uniqueRecipients } from "../email-addresses.js";
+import { EmailDeliverySetupError } from "../email-types.js";
 import type { EmailDeliveryResult } from "../email-types.js";
 import { formatErrorForLog } from "../logging.js";
 import { sendEmailMessage } from "../services/email.js";
@@ -49,15 +50,15 @@ export function toEmailAugmentedResult<T extends object & { length?: never }>(
 }
 
 function getSanitizedDeliveryFailureReason(error: unknown): string {
-  const message = error instanceof Error ? error.message : "";
-  if (message.startsWith("Request-scoped qURL credentials")) {
-    return "Email delivery authorization context was unavailable.";
-  }
-  if (message.startsWith("SMTP ")) {
-    return "Email delivery was not attempted because SMTP configuration or connection failed.";
-  }
-  if (message.startsWith("Email ")) {
-    return "Email delivery was not attempted because recipient or message validation failed.";
+  if (error instanceof EmailDeliverySetupError) {
+    switch (error.kind) {
+      case "authorization":
+        return "Email delivery authorization context was unavailable.";
+      case "smtp":
+        return "Email delivery was not attempted because SMTP configuration or connection failed.";
+      case "input":
+        return "Email delivery was not attempted because recipient or message validation failed.";
+    }
   }
   return "Email delivery was not attempted because delivery setup failed.";
 }

@@ -1,4 +1,4 @@
-type ConsoleMethodName = "warn" | "error";
+type ConsoleMethodName = "log" | "info" | "debug" | "warn" | "error";
 
 const PATCH_FLAG = Symbol.for("qurl-mcp.consoleTimestampPatched");
 // Keep this aligned with the qURL API-key format. Bearer-form credentials are
@@ -68,14 +68,15 @@ export function installTimestampedConsole(): void {
     return;
   }
 
-  // stdout is reserved for JSON-RPC in stdio mode. Only patch the two methods
-  // this project permits, both of which write to stderr in Node.js.
-  const methods: ConsoleMethodName[] = ["warn", "error"];
+  // stdout is reserved for JSON-RPC in stdio mode. Route every common console
+  // method through the captured stderr writer so a future console.log/info/debug
+  // call cannot corrupt the protocol stream or bypass credential redaction.
+  const writeToStderr = globalConsole.error.bind(globalConsole);
+  const methods: ConsoleMethodName[] = ["log", "info", "debug", "warn", "error"];
   for (const method of methods) {
-    const original = globalConsole[method].bind(globalConsole);
     Object.defineProperty(globalConsole, method, {
       configurable: true,
-      value: (...args: unknown[]) => original(...prefixArgs(args)),
+      value: (...args: unknown[]) => writeToStderr(...prefixArgs(args)),
       writable: true,
     });
   }

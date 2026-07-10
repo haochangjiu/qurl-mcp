@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import { getRequestQurlApiKey } from "../auth/request-context.js";
 import { loadRuntimeConfig } from "../config.js";
 import { isEmailAddress, uniqueRecipients } from "../email-addresses.js";
+import { EmailDeliverySetupError } from "../email-types.js";
 import type { EmailDeliveryRecipientResult, EmailDeliveryResult } from "../email-types.js";
 import { formatErrorForLog } from "../logging.js";
 
@@ -77,14 +78,23 @@ export async function sendEmailMessage(
     };
   }
   if (recipients.some((recipient) => !isEmailAddress(recipient))) {
-    throw new Error("Email recipients must be valid addresses.");
+    throw new EmailDeliverySetupError("input", "Email recipients must be valid addresses.");
   }
   if (!input.subject.trim() || input.subject.length > 200 || /[\r\n]/.test(input.subject)) {
-    throw new Error("Email subject must be a non-empty single line.");
+    throw new EmailDeliverySetupError("input", "Email subject must be a non-empty single line.");
   }
-  if (input.text.length > 10_000) throw new Error("Email text exceeds the 10,000 character limit.");
+  if (input.text.length > 10_000) {
+    throw new EmailDeliverySetupError("input", "Email text exceeds the 10,000 character limit.");
+  }
 
-  const runtimeConfig = loadRuntimeConfig();
+  let runtimeConfig;
+  try {
+    runtimeConfig = loadRuntimeConfig();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "SMTP configuration could not be loaded.";
+    throw new EmailDeliverySetupError("smtp", message, { cause: error });
+  }
   const smtp = runtimeConfig.smtp;
   if (!smtp) {
     return {
@@ -101,10 +111,16 @@ export async function sendEmailMessage(
     smtp.fromEmail.length > 254 ||
     !isEmailAddress(smtp.fromEmail)
   ) {
-    throw new Error("SMTP fromEmail must be a valid single-line email address.");
+    throw new EmailDeliverySetupError(
+      "smtp",
+      "SMTP fromEmail must be a valid single-line email address.",
+    );
   }
   if (smtp.fromName && (/[\r\n]/.test(smtp.fromName) || smtp.fromName.length > 200)) {
-    throw new Error("SMTP fromName must be a single line of at most 200 characters.");
+    throw new EmailDeliverySetupError(
+      "smtp",
+      "SMTP fromName must be a single line of at most 200 characters.",
+    );
   }
 
   if (recipients.length > smtp.maxRecipientsPerMessage) {
@@ -144,7 +160,10 @@ export async function sendEmailMessage(
 
   const requestApiKey = getRequestQurlApiKey();
   if (options.allowServerApiKeyFallback === false && !requestApiKey) {
-    throw new Error("Request-scoped qURL credentials are unavailable for email quota tracking.");
+    throw new EmailDeliverySetupError(
+      "authorization",
+      "Request-scoped qURL credentials are unavailable for email quota tracking.",
+    );
   }
   const principalKey = requestApiKey ?? runtimeConfig.qurlApiKey ?? "unscoped";
   const principal = await deriveEmailQuotaPrincipal(principalKey);

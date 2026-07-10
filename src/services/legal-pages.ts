@@ -179,6 +179,8 @@ or
 ];
 
 function renderInlineMarkdown(value: string): string {
+  // Escape source text before adding trusted formatting tags. Reversing this
+  // order would allow source HTML to survive the markdown replacements.
   const escaped = escapeHtml(value);
   return escaped
     .replace(/`([^`]+)`/g, "<code>$1</code>")

@@ -2,7 +2,8 @@
 
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { createReadStream, statSync, type Stats } from "node:fs";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -30,9 +31,9 @@ import {
   createQurlClientFromBearerToken,
 } from "./auth/static-bearer.js";
 import {
+  DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
   getDefaultConfigPath,
   inspectSmtpConfig,
-  isInsecureNonLoopbackHttpUrl,
   isLoopbackHostname,
 } from "./config.js";
 import {
@@ -117,6 +118,23 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   } else {
     app.use(localhostHostValidation());
   }
+  const allowedOrigin = new URL(baseUrl).origin;
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin === undefined) {
+      next();
+      return;
+    }
+    try {
+      if (typeof origin === "string" && new URL(origin).origin === allowedOrigin) {
+        next();
+        return;
+      }
+    } catch {
+      // Reject malformed Origin values with the same bounded response.
+    }
+    res.status(403).send("Origin is not allowed.");
+  });
 
   const parseMcpJsonBody = express.json({
     limit: getJsonBodyLimitBytes(config.maxUploadFileDataBytes),
@@ -125,6 +143,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
 
   const sessions = new Map<string, SessionContext>();
   let pendingInitializations = 0;
+  const pendingInitializationsByCredential = new Map<string, number>();
 
   async function closeSession(sessionId: string): Promise<void> {
     const session = sessions.get(sessionId);
@@ -187,7 +206,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
   }
 
   function getAuthenticatedBearerToken(req: express.Request): string | undefined {
-    const token = req.auth?.token.trim();
+    const token = req.auth?.token?.trim();
     return token ? token : undefined;
   }
 
@@ -240,10 +259,14 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     );
   }
 
-  function streamPublicVideo(req: express.Request, res: express.Response, filePath: string): void {
-    let stats: Stats;
+  async function streamPublicVideo(
+    req: express.Request,
+    res: express.Response,
+    filePath: string,
+  ): Promise<void> {
+    let stats;
     try {
-      stats = statSync(filePath);
+      stats = await stat(filePath);
     } catch (error) {
       console.error(`[public-video] file inspection failed (${formatErrorForLog(error)})`);
       res.status(404).send("Configured video file was not found.");
@@ -269,10 +292,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader("Content-Type", "video/mp4");
     res.setHeader("Cache-Control", "public, max-age=300");
-    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+    setPublicPageSecurityHeaders(res);
     res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
 
     if (!range) {
       res.setHeader("Content-Length", fileSize);
@@ -339,6 +360,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       return undefined;
     }
     if (!bearerToken || !bearerTokenMatches(bearerToken, session.bearerTokenDigest)) {
+      // Use the same 404 response as an unknown ID so callers cannot use the
+      // endpoint as a session-existence oracle across bearer credentials.
       console.warn("[mcp-http] rejected request from a different bearer token");
       return undefined;
     }
@@ -385,6 +408,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
         return;
       }
       if (containsInitialize) {
+        const bearerTokenDigest = digestBearerToken(bearerToken);
+        const credentialKey = bearerTokenDigest.toString("hex");
         await sweepExpiredSessions();
         if (sessions.size + pendingInitializations >= config.maxSessions) {
           rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
@@ -401,12 +426,25 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           );
           return;
         }
+        const credentialSessionCount = [...sessions.values()].filter((session) =>
+          session.bearerTokenDigest.equals(bearerTokenDigest),
+        ).length;
+        const pendingForCredential = pendingInitializationsByCredential.get(credentialKey) ?? 0;
+        if (credentialSessionCount + pendingForCredential >= config.maxSessionsPerCredential) {
+          rejectJsonRpc(
+            res,
+            503,
+            "The per-credential MCP session limit has been reached. Close an existing session or try again later.",
+          );
+          return;
+        }
 
         // Reserve both a live-session slot and an unvalidated-session slot
-        // before the first initialization await. Keep the cap checks through
-        // this increment free of await points so concurrent initialize
-        // requests cannot overshoot either configured cap.
+        // plus the caller's per-credential slot before the first initialization
+        // await. Keep the cap checks through these increments free of await
+        // points so concurrent requests cannot overshoot any configured cap.
         pendingInitializations += 1;
+        pendingInitializationsByCredential.set(credentialKey, pendingForCredential + 1);
 
         try {
           // Initialization always creates a fresh session. Discard any supplied
@@ -461,7 +499,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
             sessionId: transport.sessionId,
             transport,
             server,
-            bearerTokenDigest: digestBearerToken(bearerToken),
+            bearerTokenDigest,
             createdAt,
             lastActivityAt: createdAt,
             activeRequests: 0,
@@ -471,6 +509,13 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           return;
         } finally {
           pendingInitializations -= 1;
+          const remainingForCredential =
+            (pendingInitializationsByCredential.get(credentialKey) ?? 1) - 1;
+          if (remainingForCredential === 0) {
+            pendingInitializationsByCredential.delete(credentialKey);
+          } else {
+            pendingInitializationsByCredential.set(credentialKey, remainingForCredential);
+          }
         }
       }
 
@@ -605,8 +650,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       res.type("html").send(videoPageHtml);
     });
 
-    app.get(videoFileRoute, publicRouteRateLimiter, (req, res) => {
-      streamPublicVideo(req, res, publicVideo.filePath);
+    app.get(videoFileRoute, publicRouteRateLimiter, async (req, res) => {
+      await streamPublicVideo(req, res, publicVideo.filePath);
     });
   }
 
@@ -639,9 +684,9 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const httpServer = app.listen(port, host, () => {
       logInfo(`qURL MCP HTTP server listening on ${sanitizeLogValue(host)}:${port}`);
       logInfo("HTTP MCP auth mode: bearer token (qURL API key passthrough)");
-      if (isInsecureNonLoopbackHttpUrl(defaultQurlApiUrl)) {
-        console.error(
-          "Warning: QURL_API_URL uses plaintext HTTP for a non-loopback host; bearer credentials and qURL API data will be sent without transport encryption.",
+      if (config.maxUploadFileDataBytes > DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES) {
+        console.warn(
+          "Warning: maxUploadFileDataBytes exceeds the default; any non-empty bearer can submit a correspondingly larger JSON request before downstream credential validation. Apply an authenticated edge request-size limit on hostile networks.",
         );
       }
       if (config.trustProxyHops === 0 && !isLoopbackHostname(host)) {
@@ -708,9 +753,15 @@ const isMainModule =
   typeof process.argv[1] === "string" &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMainModule) {
-  const require = createRequire(import.meta.url);
-  const { version } = require("../package.json") as { version: string };
-  const runtimeConfigPath = getDefaultConfigPath();
-  const config = loadHttpServerConfig(getDefaultHttpConfigPath());
-  createHttpRuntime(config, { runtimeConfigPath, version }).startHttpServer();
+  try {
+    const require = createRequire(import.meta.url);
+    const { version } = require("../package.json") as { version: string };
+    const runtimeConfigPath = getDefaultConfigPath();
+    const config = loadHttpServerConfig(getDefaultHttpConfigPath());
+    createHttpRuntime(config, { runtimeConfigPath, version }).startHttpServer();
+  } catch (error) {
+    installTimestampedConsole();
+    console.error(`qURL MCP HTTP startup failed (${formatErrorForLog(error)})`);
+    process.exitCode = 1;
+  }
 }

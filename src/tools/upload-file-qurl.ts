@@ -4,8 +4,13 @@ import { open, type FileHandle } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
-import { accessPolicySchema } from "./create-qurl.js";
-import { toStructuredContent, withMissingApiKeyHandler } from "./_shared.js";
+import {
+  allowsServerApiKeyFallback,
+  toStructuredContent,
+  withMissingApiKeyHandler,
+  type ToolRuntimeOptions,
+} from "./_shared.js";
+import { uploadMintOptionsShape } from "./upload-mint-options.js";
 import {
   getConnectorConfig,
   getMaxUploadFileBytes,
@@ -20,48 +25,27 @@ import {
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
 
-export const uploadFileQurlSchema = z.object({
-  file_path: z
-    .string()
-    .min(1)
-    .max(4096)
-    .describe("Path to a local PDF or raster image file on the MCP server host"),
-  file_name: z
-    .string()
-    .min(1)
-    .max(255)
-    .optional()
-    .describe("Optional override for the uploaded filename; defaults to the source basename"),
-  content_type: z
-    .enum(supportedMimeTypes)
-    .optional()
-    .describe(
-      "Optional MIME type override. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif",
-    ),
-  label: z
-    .string()
-    .max(500)
-    .optional()
-    .describe("Human-readable label identifying who this qURL is for (max 500 chars)"),
-  expires_in: z.string().min(1).optional().describe('Duration string (e.g., "1h", "24h", "7d")'),
-  one_time_use: z
-    .boolean()
-    .optional()
-    .describe("Whether the link can only be used once. Defaults to true for uploaded files."),
-  max_sessions: z
-    .number()
-    .int()
-    .min(0)
-    .max(1000)
-    .optional()
-    .describe("Maximum concurrent sessions for this qURL token (0 = unlimited, max 1000)"),
-  session_duration: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('How long access lasts after clicking (e.g., "1h")'),
-  access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
-});
+export const uploadFileQurlSchema = z
+  .object({
+    file_path: z
+      .string()
+      .min(1)
+      .max(4096)
+      .describe("Path to a local PDF or raster image file on the MCP server host"),
+    file_name: z
+      .string()
+      .min(1)
+      .max(255)
+      .optional()
+      .describe("Optional override for the uploaded filename; defaults to the source basename"),
+    content_type: z
+      .enum(supportedMimeTypes)
+      .optional()
+      .describe(
+        "Optional MIME type override. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif",
+      ),
+  })
+  .extend(uploadMintOptionsShape);
 
 export type UploadFileQurlInput = z.infer<typeof uploadFileQurlSchema>;
 
@@ -106,7 +90,7 @@ async function readFileWithinLimit(
 export async function uploadLocalFileAndMint(
   client: IQURLClient,
   input: UploadFileQurlInput,
-  connectorConfig: ConnectorConfig = getConnectorConfig(),
+  connectorConfig: ConnectorConfig,
 ) {
   // Preflight config before reading local files so misconfigured hosts fail fast.
   const sourcePath = resolve(input.file_path);
@@ -134,6 +118,7 @@ export async function uploadLocalFileAndMint(
   try {
     const sourceStat = await fileHandle.stat();
     if (!sourceStat.isFile()) throw new Error("file_path must point to a regular file");
+    if (sourceStat.size === 0) throw new Error("File is empty.");
     if (sourceStat.size > maxBytes) {
       throw new Error("File exceeds the configured upload size limit.");
     }
@@ -151,7 +136,10 @@ export async function uploadLocalFileAndMint(
   );
 }
 
-export function uploadFileQurlTool(client: IQURLClient) {
+export function uploadFileQurlTool(
+  client: IQURLClient,
+  runtime: ToolRuntimeOptions = { mode: "stdio" },
+) {
   return {
     name: "upload_file_qurl",
     title: "Upload File qURL",
@@ -174,7 +162,8 @@ export function uploadFileQurlTool(client: IQURLClient) {
       openWorldHint: true,
     },
     handler: withMissingApiKeyHandler(async (input: UploadFileQurlInput) => {
-      const result = await uploadLocalFileAndMint(client, input);
+      const connectorConfig = getConnectorConfig(allowsServerApiKeyFallback(runtime));
+      const result = await uploadLocalFileAndMint(client, input, connectorConfig);
 
       return {
         content: [

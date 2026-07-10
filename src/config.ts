@@ -50,6 +50,7 @@ export type ConfigFileShape = Partial<{
   allowedHosts: string[];
   trustProxyHops: number;
   maxSessions: number;
+  maxSessionsPerCredential: number;
   maxUnvalidatedSessions: number;
   sessionIdleTtlMs: number;
   unvalidatedSessionTtlMs: number;
@@ -86,6 +87,16 @@ export function parseConfigFile(configPath: string): ConfigFileShape {
     const parsed = JSON.parse(content) as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error("Configuration file root must be a JSON object.");
+    }
+    const record = parsed as Record<string, unknown>;
+    for (const field of ["smtp", "publicVideo"] as const) {
+      const value = record[field];
+      if (
+        value !== undefined &&
+        (typeof value !== "object" || value === null || Array.isArray(value))
+      ) {
+        throw new Error(`${field} must be a JSON object.`);
+      }
     }
     return parsed as ConfigFileShape;
   } catch (error) {
@@ -210,11 +221,6 @@ export function isLoopbackHostname(hostname: string): boolean {
   const mappedIpv4 = /^::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}$/.exec(normalized);
   if (mappedIpv4 && Number.parseInt(mappedIpv4[1], 16) >> 8 === 127) return true;
   return isIP(normalized) === 4 && Number(normalized.split(".", 1)[0]) === 127;
-}
-
-export function isInsecureNonLoopbackHttpUrl(value: string): boolean {
-  const url = new URL(value);
-  return url.protocol === "http:" && !isLoopbackHostname(url.hostname);
 }
 
 function normalizeServiceBaseUrl(value: string, fieldName: string, requireHttps: boolean): string {

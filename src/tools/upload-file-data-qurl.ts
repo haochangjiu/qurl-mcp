@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { z } from "zod";
 import type { IQURLClient } from "../client.js";
 import { MAX_UPLOAD_FILE_DATA_BYTES } from "../config.js";
-import { accessPolicySchema } from "./create-qurl.js";
 import {
   allowsServerApiKeyFallback,
   withMissingApiKeyHandler,
@@ -24,60 +23,40 @@ import {
   validateFileSignature,
 } from "./upload-file-shared.js";
 import { uploadFileQurlOutputSchema } from "./output-schemas.js";
+import { uploadMintOptionsShape } from "./upload-mint-options.js";
 
 // This schema ceiling is a protocol-wide safety bound. HTTP body parsing and
 // getMaxUploadFileBytes apply the operator's usually smaller runtime limit.
 const MAX_UPLOAD_FILE_BASE64_CHARACTERS = Math.ceil((MAX_UPLOAD_FILE_DATA_BYTES * 4) / 3) + 1024;
 
-export const uploadFileDataQurlSchema = z.object({
-  file_base64: z
-    .string()
-    .min(1)
-    .max(MAX_UPLOAD_FILE_BASE64_CHARACTERS)
-    .describe(
-      "Base64-encoded PDF or raster image content. Raw base64 and data URLs are both accepted. For compressible images, compress them first and then convert them to base64 before calling this tool.",
-    ),
-  file_name: z
-    .string()
-    .min(1)
-    .max(255)
-    .describe(
-      "Filename to register with the connector. `.jpg` and `.jpeg` files should use `image/jpeg`.",
-    ),
-  content_type: z
-    .enum(supportedMimeTypes)
-    .describe(
-      "MIME type for the uploaded file. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif.",
-    ),
-  label: z
-    .string()
-    .max(500)
-    .optional()
-    .describe("Human-readable label identifying who this qURL is for (max 500 chars)"),
-  expires_in: z.string().min(1).optional().describe('Duration string (e.g., "1h", "24h", "7d")'),
-  one_time_use: z
-    .boolean()
-    .optional()
-    .describe("Whether the link can only be used once. Defaults to true for uploaded files."),
-  max_sessions: z
-    .number()
-    .int()
-    .min(0)
-    .max(1000)
-    .optional()
-    .describe("Maximum concurrent sessions for this qURL token (0 = unlimited, max 1000)"),
-  session_duration: z
-    .string()
-    .min(1)
-    .optional()
-    .describe('How long access lasts after clicking (e.g., "1h")'),
-  access_policy: accessPolicySchema.optional().describe("Access control policy for this link"),
-  email_delivery: emailDeliveryInputSchema
-    .optional()
-    .describe(
-      "Optional email notification settings for sending the uploaded file's qURL to one or more recipients.",
-    ),
-});
+export const uploadFileDataQurlSchema = z
+  .object({
+    file_base64: z
+      .string()
+      .min(1)
+      .max(MAX_UPLOAD_FILE_BASE64_CHARACTERS)
+      .describe(
+        "Base64-encoded PDF or raster image content. Raw base64 and data URLs are both accepted. For compressible images, compress them first and then convert them to base64 before calling this tool.",
+      ),
+    file_name: z
+      .string()
+      .min(1)
+      .max(255)
+      .describe(
+        "Filename to register with the connector. `.jpg` and `.jpeg` files should use `image/jpeg`.",
+      ),
+    content_type: z
+      .enum(supportedMimeTypes)
+      .describe(
+        "MIME type for the uploaded file. Supported: application/pdf, image/png, image/jpeg, image/webp, image/gif.",
+      ),
+    email_delivery: emailDeliveryInputSchema
+      .optional()
+      .describe(
+        "Optional email notification settings for sending the uploaded file's qURL to one or more recipients.",
+      ),
+  })
+  .extend(uploadMintOptionsShape);
 
 /**
  * Normalize and validate base64 input for file upload.

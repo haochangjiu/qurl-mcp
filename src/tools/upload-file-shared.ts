@@ -39,7 +39,7 @@ type ConnectorUploadResponse = {
 
 export type ConnectorConfig = {
   apiKey: string;
-  connectorURL: string;
+  uploadUrl: string;
 };
 
 type ConnectorErrorBody = {
@@ -74,9 +74,9 @@ export function getConnectorConfig(allowServerApiKeyFallback = true): ConnectorC
   const normalizedConnectorURL = connectorURL.replace(/\/$/, "");
   // Validate operator configuration during preflight, before callers decode
   // or read a potentially large upload payload.
-  getConnectorUploadUrl(normalizedConnectorURL);
+  const uploadUrl = getConnectorUploadUrl(normalizedConnectorURL);
 
-  return { apiKey, connectorURL: normalizedConnectorURL };
+  return { apiKey, uploadUrl };
 }
 
 export function getConnectorUploadUrl(connectorURL: string): string {
@@ -386,8 +386,7 @@ export async function uploadToConnector(
   contentType: string,
   connectorConfig: ConnectorConfig,
 ): Promise<ConnectorUploadResponse> {
-  const { apiKey, connectorURL } = connectorConfig;
-  const uploadUrl = getConnectorUploadUrl(connectorURL);
+  const { apiKey, uploadUrl } = connectorConfig;
   const form = new globalThis.FormData();
   // BlobPart's DOM type excludes SharedArrayBuffer-backed views. Reuse the
   // normal ArrayBuffer view without copying; only copy the theoretical shared

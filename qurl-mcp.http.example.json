@@ -5,6 +5,7 @@
   "allowedHosts": ["127.0.0.1", "localhost"],
   "trustProxyHops": 0,
   "maxSessions": 1000,
+  "maxSessionsPerCredential": 20,
   "maxUnvalidatedSessions": 100,
   "sessionIdleTtlMs": 900000,
   "unvalidatedSessionTtlMs": 60000,

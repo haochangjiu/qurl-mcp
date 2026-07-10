@@ -167,6 +167,26 @@ describe("uploadFileQurlTool", () => {
       expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 
+    it("rejects an empty local file before contacting the connector", async () => {
+      const emptyPath = join(tempDir!, "empty.pdf");
+      writeFileSync(emptyPath, "");
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileQurlTool(makeMockClient());
+
+      await expect(tool.handler({ file_path: emptyPath })).rejects.toThrow("File is empty");
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it("does not use the server API key fallback when invoked in HTTP mode", async () => {
+      globalThis.fetch = vi.fn();
+      const tool = uploadFileQurlTool(makeMockClient(), { mode: "http" });
+
+      await expect(tool.handler({ file_path: fixturePath })).resolves.toEqual(
+        expect.objectContaining({ isError: true }),
+      );
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
     it("rejects symbolic links instead of following them", async () => {
       const symlinkPath = join(tempDir!, "linked-sample.pdf");
       symlinkSync(fixturePath, symlinkPath);

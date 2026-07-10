@@ -81,4 +81,16 @@ describe("file name validation", () => {
     ).toThrow("does not match");
     expect(() => validateFileSignature(Buffer.from("%PDF-1.7"), "application/pdf")).not.toThrow();
   });
+
+  it("requires a valid WebP image chunk after the RIFF/WEBP header", () => {
+    const valid = Buffer.alloc(16);
+    valid.write("RIFF", 0, "ascii");
+    valid.write("WEBP", 8, "ascii");
+    valid.write("VP8X", 12, "ascii");
+    const invalid = Buffer.from(valid);
+    invalid.write("WAVE", 12, "ascii");
+
+    expect(() => validateFileSignature(valid, "image/webp")).not.toThrow();
+    expect(() => validateFileSignature(invalid, "image/webp")).toThrow("does not match");
+  });
 });

@@ -44,6 +44,7 @@ vi.mock("@layervai/qurl", async (importOriginal) => {
 });
 
 import { QURLClient, QURLAPIError, MISSING_API_KEY_MESSAGE } from "../client.js";
+import { createQurlClientFromBearerToken } from "../auth/static-bearer.js";
 import { runWithRequestAuthContext } from "../auth/request-context.js";
 import {
   AuthenticationError,
@@ -92,6 +93,28 @@ describe("QURLClient adapter", () => {
       expect(SDKClientMock).toHaveBeenCalledTimes(1);
       expect(SDKClientMock).toHaveBeenCalledWith({
         apiKey: "lv_live_key",
+        baseUrl: "https://api.test.layerv.ai",
+      });
+    });
+
+    it("keeps distinct caller bearer tokens isolated at the SDK boundary", async () => {
+      sdk.get.mockResolvedValue({ resource_id: "r_x" });
+      const callerA = createQurlClientFromBearerToken("lv_live_caller_a", {
+        qurlApiUrl: "https://api.test.layerv.ai",
+      });
+      const callerB = createQurlClientFromBearerToken("lv_live_caller_b", {
+        qurlApiUrl: "https://api.test.layerv.ai",
+      });
+
+      await callerA.getQURL("r_a");
+      await callerB.getQURL("r_b");
+
+      expect(SDKClientMock).toHaveBeenNthCalledWith(1, {
+        apiKey: "lv_live_caller_a",
+        baseUrl: "https://api.test.layerv.ai",
+      });
+      expect(SDKClientMock).toHaveBeenNthCalledWith(2, {
+        apiKey: "lv_live_caller_b",
         baseUrl: "https://api.test.layerv.ai",
       });
     });

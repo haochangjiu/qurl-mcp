@@ -282,7 +282,7 @@ introspection remains pending by design; after deadline eviction it must
 re-initialize before its next request. Both pending-session limits are
 configurable for clients with longer introspection-to-tool-call gaps. The
 deadline is absolute and applies regardless of activity, including an open SSE
-stream.
+stream or a long-running first tool call.
 Validated clients that disconnect without sending `DELETE /mcp` retain their
 bounded session slot until the idle TTL expires so an SSE reconnect can reuse
 the session. Size `maxSessions` and the idle TTL for clients that do not perform
@@ -343,7 +343,8 @@ After starting in `http` mode, the common routes are:
 | `publicVideo.pagePath + /file` | MP4 streaming endpoint       |
 
 `/healthz` is intentionally unauthenticated, exposes only `{ "ok": true }`, and
-shares the configured public-route rate limit with the legal and video routes.
+uses the configured public-route request limit in a separate bucket so health
+probes cannot consume the legal/video route allowance.
 
 ## HTTP Authentication
 

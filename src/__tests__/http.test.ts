@@ -282,6 +282,19 @@ describe("HTTP MCP server", () => {
     }
   });
 
+  it("isolates health probes from the legal and video rate-limit bucket", async () => {
+    const publicRuntime = createHttpRuntime(
+      { ...testConfig, publicFileRateLimitPerMinute: 1 },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(publicRuntime.app);
+
+    expect((await fetch(`${baseUrl}/healthz`)).status).toBe(200);
+    expect((await fetch(`${baseUrl}/legal/privacy`)).status).toBe(200);
+    expect((await fetch(`${baseUrl}/healthz`)).status).toBe(429);
+    expect((await fetch(`${baseUrl}/legal/privacy`)).status).toBe(429);
+  });
+
   it("binds sessions to the bearer token that initialized them", async () => {
     const baseUrl = await start();
     const sessionId = await initialize(baseUrl, "lv_live_owner");
@@ -307,6 +320,72 @@ describe("HTTP MCP server", () => {
     });
     expect(listed.status).toBe(200);
     expect(await listed.text()).toContain('"name":"create_qurl"');
+  });
+
+  it("rejects missing and mismatched bearer tokens on session GET requests", async () => {
+    const baseUrl = await start();
+    const sessionId = await initialize(baseUrl, "lv_live_sse_owner");
+    const sessionHeaders = {
+      accept: "text/event-stream",
+      "mcp-session-id": sessionId,
+    };
+
+    const missing = await fetch(`${baseUrl}/mcp`, { headers: sessionHeaders });
+    const mismatched = await fetch(`${baseUrl}/mcp`, {
+      headers: { ...sessionHeaders, authorization: "Bearer lv_live_sse_other" },
+    });
+
+    expect(missing.status).toBe(401);
+    expect(mismatched.status).toBe(404);
+  });
+
+  it("uses each caller's bearer token for that session's outbound qURL call", async () => {
+    const outboundKeys: string[] = [];
+    const isolatedRuntime = createHttpRuntime(testConfig, {
+      version: "0.0.0-test",
+      clientFactory: (bearerToken) =>
+        makeMockClient({
+          createQURL: vi.fn(async () => {
+            outboundKeys.push(bearerToken);
+            markRequestCredentialValidated();
+            return { data: sampleCreateQURLData() };
+          }),
+        }),
+    });
+    const baseUrl = await start(isolatedRuntime.app);
+
+    try {
+      for (const token of ["lv_live_caller_a", "lv_live_caller_b"]) {
+        const sessionId = await initialize(baseUrl, token);
+        await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "notifications/initialized",
+            params: {},
+          }),
+        });
+        const created = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers: { ...bearerHeaders(token), "mcp-session-id": sessionId },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/call",
+            params: {
+              name: "create_qurl",
+              arguments: { target_url: "https://example.com" },
+            },
+          }),
+        });
+        expect(created.status).toBe(200);
+      }
+
+      expect(outboundKeys).toEqual(["lv_live_caller_a", "lv_live_caller_b"]);
+    } finally {
+      await isolatedRuntime.closeAllSessions();
+    }
   });
 
   it("rejects an unknown session id without creating state", async () => {

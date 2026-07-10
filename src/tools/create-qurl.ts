@@ -128,7 +128,7 @@ export function createQurlTool(
           "A secure qURL link has been created for you.",
           `Target URL: ${createInput.target_url}`,
           `Secure Link: ${result.data.qurl_link}`,
-          `Expires At: ${result.data.expires_at}`,
+          ...(result.data.expires_at ? [`Expires At: ${result.data.expires_at}`] : []),
           ...(result.data.qurl_site ? [`qURL Site: ${result.data.qurl_site}`] : []),
           ...(result.data.label ? [`Label: ${result.data.label}`] : []),
           ...(result.data.type ? [`Type: ${result.data.type}`] : []),

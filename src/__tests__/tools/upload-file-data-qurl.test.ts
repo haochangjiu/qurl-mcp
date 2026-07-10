@@ -122,6 +122,10 @@ describe("uploadFileDataQurlTool", () => {
       });
 
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "https://connector.test/api/upload",
+        expect.objectContaining({ redirect: "error" }),
+      );
       expect(mintLink).toHaveBeenCalledWith(
         "r_upload12345",
         expect.objectContaining({

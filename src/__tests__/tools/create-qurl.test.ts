@@ -277,7 +277,7 @@ describe("createQurlTool", () => {
 
     it("uses request-scoped email quota credentials in HTTP mode and omits an absent site", async () => {
       const mockCreate = vi.fn().mockResolvedValue({
-        data: sampleCreateQURLData({ qurl_site: undefined }),
+        data: sampleCreateQURLData({ expires_at: undefined, qurl_site: undefined }),
       });
       vi.mocked(sendEmailMessage).mockResolvedValue({
         attempted: true,
@@ -297,6 +297,12 @@ describe("createQurlTool", () => {
       expect(vi.mocked(sendEmailMessage)).toHaveBeenCalledWith(
         expect.objectContaining({
           text: expect.not.stringContaining("qURL Site: undefined"),
+        }),
+        { allowServerApiKeyFallback: false },
+      );
+      expect(vi.mocked(sendEmailMessage)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.not.stringContaining("Expires At: undefined"),
         }),
         { allowServerApiKeyFallback: false },
       );
@@ -344,7 +350,8 @@ describe("createQurlTool", () => {
       expect(parsed.email_delivery).toEqual(
         expect.objectContaining({
           attempted: false,
-          skipped_reason: "Email delivery was not attempted because delivery setup failed.",
+          skipped_reason:
+            "Email delivery was not attempted because SMTP configuration or connection failed.",
         }),
       );
     });

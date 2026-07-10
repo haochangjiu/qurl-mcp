@@ -172,9 +172,10 @@ export function validateFileSignature(fileData: Uint8Array, contentType: string)
       bytes[2] === 0xff) ||
     (contentType === "image/gif" && ["GIF87a", "GIF89a"].includes(ascii(0, 6))) ||
     (contentType === "image/webp" &&
-      bytes.length >= 12 &&
+      bytes.length >= 16 &&
       ascii(0, 4) === "RIFF" &&
-      ascii(8, 12) === "WEBP");
+      ascii(8, 12) === "WEBP" &&
+      ["VP8 ", "VP8L", "VP8X"].includes(ascii(12, 16)));
   if (!valid) {
     throw new Error(`File content does not match declared content_type ${contentType}.`);
   }
@@ -348,7 +349,11 @@ async function fetchConnector(
   init: NonNullable<Parameters<typeof fetch>[1]>,
 ): Promise<Response> {
   try {
-    return await fetch(uploadUrl, { ...init, signal: globalThis.AbortSignal.timeout(60_000) });
+    return await fetch(uploadUrl, {
+      ...init,
+      redirect: "error",
+      signal: globalThis.AbortSignal.timeout(60_000),
+    });
   } catch (error) {
     const code =
       error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name)

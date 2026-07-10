@@ -154,6 +154,17 @@ function decodeBase64File(input: string, maxBytes: number, contentType: string):
   if (normalized.dataUrlContentType && normalized.dataUrlContentType !== contentType) {
     throw new Error("Data URL media type does not match content_type.");
   }
+  const paddingBytes = normalized.base64.endsWith("==")
+    ? 2
+    : normalized.base64.endsWith("=")
+      ? 1
+      : 0;
+  const decodedByteLength = (normalized.base64.length / 4) * 3 - paddingBytes;
+  if (decodedByteLength > maxBytes) {
+    throw new Error(
+      "Decoded file exceeds the allowed upload size. Reduce the file size and try again.",
+    );
+  }
   const fileData = Buffer.from(normalized.base64, "base64");
 
   if (fileData.byteLength === 0) {

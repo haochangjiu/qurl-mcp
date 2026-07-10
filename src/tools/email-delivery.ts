@@ -46,6 +46,20 @@ export function toEmailAugmentedResult<T extends object & { length?: never }>(
   };
 }
 
+function getSanitizedDeliveryFailureReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (message.startsWith("Request-scoped qURL credentials")) {
+    return "Email delivery authorization context was unavailable.";
+  }
+  if (message.startsWith("SMTP ")) {
+    return "Email delivery was not attempted because SMTP configuration or connection failed.";
+  }
+  if (message.startsWith("Email ")) {
+    return "Email delivery was not attempted because recipient or message validation failed.";
+  }
+  return "Email delivery was not attempted because delivery setup failed.";
+}
+
 export async function maybeDeliverToolEmail(
   input: ToolEmailInput,
 ): Promise<EmailDeliveryResult | undefined> {
@@ -76,7 +90,7 @@ export async function maybeDeliverToolEmail(
       attempted: false,
       enabled: true,
       recipients: uniqueRecipients(input.delivery.to),
-      skipped_reason: "Email delivery was not attempted because delivery setup failed.",
+      skipped_reason: getSanitizedDeliveryFailureReason(error),
     };
   }
 }

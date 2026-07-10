@@ -22,11 +22,23 @@ export interface EmailMessageOptions {
 
 type EmailQuota = { recipients: number; windowStartedAt: number };
 const emailQuotaByPrincipal = new Map<string, EmailQuota>();
+// This is intentionally a fixed window. It provides a bounded, retry-proof
+// process-local abuse guard; operators needing a strict sliding aggregate
+// policy should enforce it at the SMTP provider or gateway across replicas.
 const EMAIL_QUOTA_WINDOW_MS = 60 * 60 * 1000;
 const EMAIL_QUOTA_SALT = randomBytes(16);
 
 export function clearEmailQuotaState(): void {
   emailQuotaByPrincipal.clear();
+}
+
+function blockedRecipientResults(recipients: string[]): EmailDeliveryRecipientResult[] {
+  return recipients.map((email) => ({
+    email,
+    success: false,
+    skipped: true,
+    error: "Recipient is not allowed by SMTP policy.",
+  }));
 }
 
 async function deriveEmailQuotaPrincipal(principalKey: string): Promise<string> {
@@ -117,12 +129,7 @@ export async function sendEmailMessage(
       recipients,
       failed: blockedRecipients.length,
       skipped_reason: "No recipient matched the configured SMTP recipient allowlist.",
-      results: blockedRecipients.map((email) => ({
-        email,
-        success: false,
-        skipped: true,
-        error: "Recipient is not allowed by SMTP policy.",
-      })),
+      results: blockedRecipientResults(blockedRecipients),
     };
   }
 
@@ -177,12 +184,7 @@ export async function sendEmailMessage(
 
   const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
 
-  const results: EmailDeliveryRecipientResult[] = blockedRecipients.map((email) => ({
-    email,
-    success: false,
-    skipped: true,
-    error: "Recipient is not allowed by SMTP policy.",
-  }));
+  const results = blockedRecipientResults(blockedRecipients);
   try {
     for (const recipient of allowedRecipients) {
       try {

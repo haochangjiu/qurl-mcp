@@ -7,6 +7,9 @@ export function isEmailAddress(value: string): boolean {
 }
 
 export function uniqueRecipients(recipients: string[]): string[] {
+  // SMTP local parts are technically case-sensitive, but modern providers
+  // treat addresses case-insensitively. Canonicalizing the full address keeps
+  // allowlist and per-principal quota behavior consistent.
   return Array.from(
     new Set(
       recipients

@@ -29,7 +29,12 @@ import {
   createPassthroughBearerVerifier,
   createQurlClientFromBearerToken,
 } from "./auth/static-bearer.js";
-import { getDefaultConfigPath, inspectSmtpConfig, isInsecureNonLoopbackHttpUrl } from "./config.js";
+import {
+  getDefaultConfigPath,
+  inspectSmtpConfig,
+  isInsecureNonLoopbackHttpUrl,
+  isLoopbackHostname,
+} from "./config.js";
 import {
   getDefaultHttpConfigPath,
   loadHttpServerConfig,
@@ -90,15 +95,18 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     legacyHeaders: false,
     handler: (_req, res) => rejectJsonRpc(res, 429, "Too many requests."),
   });
-  const publicRouteRateLimiter = rateLimit({
-    windowMs: 60_000,
-    limit: config.publicFileRateLimitPerMinute,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-    handler: (_req, res) => {
-      res.status(429).send("Too many requests.");
-    },
-  });
+  const createPublicRateLimiter = () =>
+    rateLimit({
+      windowMs: 60_000,
+      limit: config.publicFileRateLimitPerMinute,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      handler: (_req, res) => {
+        res.status(429).send("Too many requests.");
+      },
+    });
+  const publicRouteRateLimiter = createPublicRateLimiter();
+  const healthRateLimiter = createPublicRateLimiter();
   const bearerAuthMiddleware = requireBearerAuth({
     verifier: createPassthroughBearerVerifier(),
     requiredScopes: ["mcp:tools"],
@@ -149,6 +157,20 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
 
   async function closeAllSessions(): Promise<void> {
     await Promise.all([...sessions.keys()].map((sessionId) => closeSession(sessionId)));
+  }
+
+  async function trackSessionActivity<T>(
+    session: SessionContext,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    session.lastActivityAt = Date.now();
+    session.activeRequests += 1;
+    try {
+      return await fn();
+    } finally {
+      session.activeRequests -= 1;
+      session.lastActivityAt = Date.now();
+    }
   }
 
   function getActiveSessionCount(): number {
@@ -456,17 +478,12 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       }
       const { session, bearerToken: sessionBearerToken } = authorizedSession;
 
-      session.lastActivityAt = Date.now();
       if (toolName) logInfo("[mcp-http] tool call started");
-      session.activeRequests += 1;
-      try {
-        await withRequestAuth(session.sessionId, sessionBearerToken, () =>
+      await trackSessionActivity(session, () =>
+        withRequestAuth(session.sessionId, sessionBearerToken, () =>
           session.transport.handleRequest(req, res, req.body),
-        );
-      } finally {
-        session.activeRequests -= 1;
-        session.lastActivityAt = Date.now();
-      }
+        ),
+      );
       if (toolName) logInfo(`[mcp-http] tool call finished elapsed=${formatDurationMs(startedAt)}`);
     } catch (error) {
       if (toolName) {
@@ -488,16 +505,11 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     const { session, bearerToken } = authorizedSession;
 
     try {
-      session.lastActivityAt = Date.now();
-      session.activeRequests += 1;
-      try {
-        await withRequestAuth(session.sessionId, bearerToken, () =>
+      await trackSessionActivity(session, () =>
+        withRequestAuth(session.sessionId, bearerToken, () =>
           session.transport.handleRequest(req, res),
-        );
-      } finally {
-        session.activeRequests -= 1;
-        session.lastActivityAt = Date.now();
-      }
+        ),
+      );
     } catch (error) {
       console.error(`Error handling MCP GET request (${formatErrorForLog(error)})`);
       if (!res.headersSent) {
@@ -595,7 +607,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     });
   }
 
-  app.get("/healthz", publicRouteRateLimiter, (_req, res) => {
+  app.get("/healthz", healthRateLimiter, (_req, res) => {
     res.json({ ok: true });
   });
 
@@ -627,6 +639,11 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       if (isInsecureNonLoopbackHttpUrl(defaultQurlApiUrl)) {
         console.error(
           "Warning: QURL_API_URL uses plaintext HTTP for a non-loopback host; bearer credentials and qURL API data will be sent without transport encryption.",
+        );
+      }
+      if (config.trustProxyHops === 0 && !isLoopbackHostname(host)) {
+        console.warn(
+          "Warning: non-loopback HTTP listener has trustProxyHops=0; clients behind a reverse proxy will share the proxy's rate-limit bucket. Set the exact trusted hop count.",
         );
       }
       logInfo("HTTP and runtime config loaded.");

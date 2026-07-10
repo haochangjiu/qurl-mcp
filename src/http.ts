@@ -32,6 +32,7 @@ const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
 
 type SessionContext = {
+  sessionId: string;
   transport: StreamableHTTPServerTransport;
   server: ReturnType<typeof createServer>;
   bearerToken: string;
@@ -234,12 +235,10 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
 
   try {
     if (isInitializeRequest(req.body)) {
-      // Bearer authentication has already succeeded; this only enforces MCP session protocol shape.
-      // lgtm[js/user-controlled-bypass]
-      if (sessionId) {
-        rejectJsonRpc(res, 400, "Initialization requests must not include a session ID.");
-        return;
-      }
+      // Initialization always creates a fresh session. Discard any supplied
+      // session header before handing the request to the MCP transport so a
+      // caller cannot use header presence to select a privileged code path.
+      delete req.headers["mcp-session-id"];
 
       const server = createServer(
         createQurlClientFromBearerToken(bearerToken, { qurlApiUrl: defaultQurlApiUrl }),
@@ -270,6 +269,7 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
       }
 
       sessions.set(transport.sessionId, {
+        sessionId: transport.sessionId,
         transport,
         server,
         bearerToken,
@@ -278,15 +278,7 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
       return;
     }
 
-    // Bearer authentication has already succeeded; non-initialize requests require a random server-issued session ID.
-    // lgtm[js/user-controlled-bypass]
-    if (!sessionId) {
-      console.warn("[mcp-http] rejected POST /mcp: initialization required");
-      rejectJsonRpc(res, 400, "Initialization request required.");
-      return;
-    }
-
-    const session = sessions.get(sessionId);
+    const session = sessions.get(sessionId ?? "");
     if (!session) {
       logMissingSession();
       rejectJsonRpc(res, 404, REINITIALIZE_MESSAGE);
@@ -301,7 +293,7 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
     if (toolName) {
       console.warn("[mcp-http] tool call started");
     }
-    await withRequestAuth(sessionId, bearerToken, () =>
+    await withRequestAuth(session.sessionId, bearerToken, () =>
       session.transport.handleRequest(req, res, req.body),
     );
     if (toolName) {
@@ -321,8 +313,8 @@ app.post("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
 app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   const sessionId = getSessionId(req);
   const bearerToken = getAuthenticatedBearerToken(req);
-  const session = sessionId ? sessions.get(sessionId) : undefined;
-  if (!session || !sessionId) {
+  const session = sessions.get(sessionId ?? "");
+  if (!session) {
     logMissingSession();
     res.status(404).send(REINITIALIZE_MESSAGE);
     return;
@@ -333,7 +325,9 @@ app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   }
 
   try {
-    await withRequestAuth(sessionId, bearerToken, () => session.transport.handleRequest(req, res));
+    await withRequestAuth(session.sessionId, bearerToken, () =>
+      session.transport.handleRequest(req, res),
+    );
   } catch {
     console.error("Error handling MCP GET request");
     if (!res.headersSent) {
@@ -345,8 +339,8 @@ app.get("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
 app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
   const sessionId = getSessionId(req);
   const bearerToken = getAuthenticatedBearerToken(req);
-  const session = sessionId ? sessions.get(sessionId) : undefined;
-  if (!session || !sessionId) {
+  const session = sessions.get(sessionId ?? "");
+  if (!session) {
     logMissingSession();
     res.status(404).send(REINITIALIZE_MESSAGE);
     return;
@@ -358,7 +352,9 @@ app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
 
   try {
     console.warn("[mcp-http] closing session");
-    await withRequestAuth(sessionId, bearerToken, () => session.transport.handleRequest(req, res));
+    await withRequestAuth(session.sessionId, bearerToken, () =>
+      session.transport.handleRequest(req, res),
+    );
   } catch {
     console.error("Error handling MCP DELETE request");
     if (!res.headersSent) {
@@ -368,7 +364,7 @@ app.delete("/mcp", mcpRateLimiter, bearerAuthMiddleware, async (req, res) => {
     // `transport.handleRequest()` for DELETE already closes the underlying
     // transport/session in the SDK. Closing the server again here can recurse
     // back into the same transport close path.
-    sessions.delete(sessionId);
+    sessions.delete(session.sessionId);
   }
 });
 

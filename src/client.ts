@@ -582,7 +582,7 @@ export class QURLClient implements IQURLClient {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds }),
-      signal: AbortSignal.timeout(30_000),
+      signal: globalThis.AbortSignal.timeout(30_000),
     });
 
     let payload: unknown;

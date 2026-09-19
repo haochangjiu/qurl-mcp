@@ -187,7 +187,7 @@ export const mintLinkOutputSchema = z.looseObject({
 });
 
 /** Response from the resource share endpoint. */
-export const shareByCRIDOutputSchema = z.object({
+export const shareByCRIDOutputSchema = z.looseObject({
   qurl: z.string().describe("Temporary qURL access link for the supplied CRID"),
   qurl_id: z.string().optional().describe("Display-friendly ID for the minted access token"),
   crid: z.string().optional().describe("CRID associated with the generated link, when available"),

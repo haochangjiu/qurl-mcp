@@ -570,68 +570,85 @@ export class QURLClient implements IQURLClient {
       throw new QURLAPIError(0, "missing_api_key", MISSING_API_KEY_MESSAGE);
     }
 
-    const response = await fetch(`${this.baseURL}/v1/resources/${encodeURIComponent(crid)}/share`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds }),
-      signal: globalThis.AbortSignal.timeout(30_000),
-    });
-
-    let payload: unknown;
+    // The published SDK has no share method or public request API. Do not
+    // retry this mint here: a lost response may already have created a link.
     try {
-      payload = await response.json();
-    } catch {
+      const response = await fetch(
+        `${this.baseURL}/v1/resources/${encodeURIComponent(crid)}/share`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(ttlSeconds === undefined ? {} : { ttl_seconds: ttlSeconds }),
+          signal: globalThis.AbortSignal.timeout(30_000),
+        },
+      );
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch (err) {
+        if (!(err instanceof SyntaxError)) throw err;
+        throw new QURLAPIError(
+          response.status,
+          "unexpected_response",
+          "qURL API returned invalid JSON",
+        );
+      }
+
+      const envelope = asRecord(payload);
+      if (!response.ok) {
+        const error = asRecord(envelope?.error);
+        const code = asString(error?.code) ?? asString(envelope?.code) ?? "api_error";
+        const message =
+          asString(error?.detail) ??
+          asString(error?.message) ??
+          asString(error?.title) ??
+          `qURL API request failed with status ${response.status}`;
+        const meta = asRecord(envelope?.meta);
+        throw new QURLAPIError(
+          response.status,
+          code,
+          message,
+          asString(error?.type),
+          asString(error?.instance),
+          asString(meta?.request_id) ?? asString(envelope?.request_id),
+        );
+      }
+
+      const data = asRecord(envelope?.data);
+      if (
+        !data ||
+        typeof data.qurl !== "string" ||
+        (data.qurl_id !== undefined && typeof data.qurl_id !== "string") ||
+        (data.crid !== undefined && typeof data.crid !== "string") ||
+        typeof data.type !== "string" ||
+        (data.expires_at !== undefined && typeof data.expires_at !== "string") ||
+        typeof data.expires_in_seconds !== "number" ||
+        typeof data.single_use !== "boolean"
+      ) {
+        throw new QURLAPIError(
+          response.status,
+          "unexpected_response",
+          "qURL API returned an invalid share response",
+        );
+      }
+
+      markRequestCredentialValidated();
+      return { data: data as unknown as ShareCRIDOutput };
+    } catch (err) {
+      if (err instanceof QURLAPIError) throw err;
+      const timeout =
+        err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
       throw new QURLAPIError(
-        response.status,
-        "unexpected_response",
-        "qURL API returned invalid JSON",
+        0,
+        timeout ? "timeout" : "network_error",
+        timeout ? "qURL API request timed out" : "qURL API network request failed",
       );
     }
-
-    const envelope = asRecord(payload);
-    if (!response.ok) {
-      const error = asRecord(envelope?.error);
-      const code = asString(error?.code) ?? asString(envelope?.code) ?? "api_error";
-      const message =
-        asString(error?.detail) ??
-        asString(error?.message) ??
-        asString(error?.title) ??
-        `qURL API request failed with status ${response.status}`;
-      const meta = asRecord(envelope?.meta);
-      throw new QURLAPIError(
-        response.status,
-        code,
-        message,
-        asString(error?.type),
-        asString(error?.instance),
-        asString(meta?.request_id) ?? asString(envelope?.request_id),
-      );
-    }
-
-    const data = asRecord(envelope?.data);
-    if (
-      !data ||
-      typeof data.qurl !== "string" ||
-      (data.qurl_id !== undefined && typeof data.qurl_id !== "string") ||
-      (data.crid !== undefined && typeof data.crid !== "string") ||
-      typeof data.type !== "string" ||
-      (data.expires_at !== undefined && typeof data.expires_at !== "string") ||
-      typeof data.expires_in_seconds !== "number" ||
-      typeof data.single_use !== "boolean"
-    ) {
-      throw new QURLAPIError(
-        response.status,
-        "unexpected_response",
-        "qURL API returned an invalid share response",
-      );
-    }
-
-    markRequestCredentialValidated();
-    return { data: data as unknown as ShareCRIDOutput };
   }
 
   async batchCreate(input: BatchCreateInput): Promise<BatchCreateOutput> {

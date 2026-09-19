@@ -50,6 +50,10 @@ It currently supports:
 `share_by_crid` recognizes a standalone `$<CRID>` value as an explicit request
 to mint a temporary link for that CRID. The `$` is a user-facing marker and is
 removed before the CRID is sent to the qURL API. A bare CRID remains supported.
+This tool requires `qurl:resolve`. Its optional Go-duration `ttl` must resolve to
+a positive whole number of seconds. The service clamps the requested lifetime.
+Sharing makes one request with a 30-second timeout and does not automatically
+retry. Repeating the tool call can mint another link.
 
 Resource status filters accept `active`, `revoked`, or `active,revoked`.
 A resource remains active or revoked even when its `expires_at` is in the past;

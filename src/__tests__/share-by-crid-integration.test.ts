@@ -12,7 +12,7 @@ import { sampleShareCRIDOutput } from "./helpers.js";
 describe.each(["stdio", "http"] as const)("share_by_crid in %s mode", (mode) => {
   it("shares a marked CRID and accepts older resources without a CRID", async () => {
     const requests: { path?: string; body: string; authorization?: string }[] = [];
-    const payload = sampleShareCRIDOutput();
+    const payload = { ...sampleShareCRIDOutput(), future_api_field: "preserved" };
     const legacyPayload = { ...payload, crid: undefined };
     const api = createHTTPServer(async (req, res) => {
       let body = "";

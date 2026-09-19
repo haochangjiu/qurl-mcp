@@ -21,7 +21,7 @@ describe("shareByCRIDTool", () => {
     await tool.handler({ crid: "$crid_test" });
 
     expect(shareByCRID).toHaveBeenCalledWith("crid_test", undefined);
-    expect(tool.description).toContain("beginning with `$`");
+    expect(tool.description).toContain("leading `$` marker");
   });
 
   it('rejects a "$" marker without a CRID', async () => {
@@ -42,6 +42,15 @@ describe("shareByCRIDTool", () => {
     await tool.handler({ crid: "crid_test", ttl: "1h30m" });
 
     expect(shareByCRID).toHaveBeenCalledWith("crid_test", 5400);
+  });
+
+  it("rejects oversized resource identifiers before fetching", async () => {
+    const shareByCRID = vi.fn();
+    const result = await shareByCRIDTool(makeMockClient({ shareByCRID })).handler({
+      crid: "x".repeat(513),
+    });
+    expect(result.isError).toBe(true);
+    expect(shareByCRID).not.toHaveBeenCalled();
   });
 
   it.each(["1.001s999ms", "+2s", "2.s", "2000000μs", "0.0000000001s2s"])(

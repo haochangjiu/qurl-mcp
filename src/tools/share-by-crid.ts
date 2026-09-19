@@ -12,6 +12,7 @@ export const shareByCRIDSchema = z.object({
   crid: z
     .string()
     .min(1)
+    .max(512)
     .describe(
       'CRID of the resource to turn into a temporary qURL link. Accepts either the bare CRID or the user-facing "$<CRID>" form.',
     ),
@@ -21,7 +22,7 @@ export const shareByCRIDSchema = z.object({
     .max(64)
     .optional()
     .describe(
-      'Requested link lifetime in Go duration format, such as "90s", "5m", or "1h30m". The service may grant less.',
+      'Requested link lifetime in Go duration format, such as "90s", "5m", or "1h30m". The total must be a positive whole number of seconds. The service may adjust the lifetime.',
     ),
 });
 
@@ -81,8 +82,8 @@ export function shareByCRIDTool(
     title: "Share qURL by CRID",
     description:
       "Request a temporary qURL access link for a resource identified by its CRID. " +
-      "When the user supplies a standalone value beginning with `$` (for example, `$crid_abc123`), interpret the text after `$` as a CRID and use this tool. " +
-      "Set `ttl` to request a lifetime using the same duration syntax as `qurl share --ttl`; the service may grant less. " +
+      "When the user supplies a resource CRID with a leading `$` marker, remove the marker and use this tool. " +
+      "Set `ttl` to request a lifetime using Go duration syntax; the total must be a positive whole number of seconds. The service may adjust the lifetime. " +
       "The link is minted by the qURL API and includes its expiration and single-use metadata.",
     inputSchema: shareByCRIDSchema,
     outputSchema: shareByCRIDOutputSchema,

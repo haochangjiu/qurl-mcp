@@ -207,6 +207,43 @@ describe("QURLClient adapter", () => {
       });
     });
 
+    it.each([
+      ["network", new TypeError("fetch failed"), "network_error"],
+      ["timeout", new globalThis.DOMException("timed out", "TimeoutError"), "timeout"],
+    ])(
+      "shareByCRID translates a %s failure without retrying the mint",
+      async (_label, failure, code) => {
+        const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(failure);
+        await expect(newClient().shareByCRID("crid_x")).rejects.toMatchObject({
+          statusCode: 0,
+          code,
+        });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each([
+      "not JSON",
+      JSON.stringify({ data: { qurl: "https://example.com", expires_in_seconds: "300" } }),
+    ])("shareByCRID rejects invalid responses without validating the credential", async (body) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(body));
+      let validated = false;
+      await expect(
+        runWithRequestAuthContext({ markCredentialValidated: () => (validated = true) }, () =>
+          newClient().shareByCRID("crid_x"),
+        ),
+      ).rejects.toMatchObject({ code: "unexpected_response" });
+      expect(validated).toBe(false);
+    });
+
+    it("shareByCRID rejects missing credentials before fetching", async () => {
+      const fetch = vi.spyOn(globalThis, "fetch");
+      await expect(newClient(" ").shareByCRID("crid_x")).rejects.toMatchObject({
+        code: "missing_api_key",
+      });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
     it("createQURL passes the input through and wraps the result in { data }", async () => {
       sdk.create.mockResolvedValue({
         qurl_id: "q_x",

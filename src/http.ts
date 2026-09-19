@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isHttpEmailAuthorized } from "./services/email.js";
 
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
@@ -35,6 +36,7 @@ import {
   DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
   getDefaultConfigPath,
   inspectSmtpConfig,
+  loadRuntimeConfig,
   isLoopbackHostname,
 } from "./config.js";
 import {
@@ -532,6 +534,24 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     return timingSafeEqual(digestBearerToken(token), expectedDigest);
   }
 
+  function getToolCapabilities(bearerToken: string) {
+    // Upload routing is fixed for this runtime; SMTP configuration can refresh.
+    const uploads = Boolean(defaultQurlConnectorUrl);
+    try {
+      const runtimeConfig = loadRuntimeConfig(runtimeConfigPath);
+      return {
+        uploads,
+        email:
+          Boolean(runtimeConfig.smtp) &&
+          isHttpEmailAuthorized(bearerToken, runtimeConfig.qurlApiKey),
+      };
+    } catch (error) {
+      // A malformed SMTP edit must not take unrelated MCP tools offline.
+      console.error(`Email discovery disabled (${formatErrorForLog(error)})`);
+      return { uploads, email: false };
+    }
+  }
+
   function getJsonRpcMethod(body: unknown): string | undefined {
     if (!body || typeof body !== "object") return undefined;
     return "method" in body && typeof body.method === "string" ? body.method : undefined;
@@ -749,6 +769,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       version,
       "http",
       config.maxUploadFileDataBytes,
+      getToolCapabilities(bearerToken),
     );
     const transport =
       options.transportFactory?.(true) ??
@@ -865,6 +886,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
             version,
             "http",
             config.maxUploadFileDataBytes,
+            getToolCapabilities(bearerToken),
           );
           const transport =
             options.transportFactory?.() ??
@@ -1249,6 +1271,13 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           ? "SMTP is configured."
           : `SMTP is not configured. Missing fields: ${smtpInspection.missingFields.join(", ") || "(unknown)"}`,
       );
+      if (smtpInspection.enabled) {
+        logInfo(
+          loadRuntimeConfig(runtimeConfigPath).qurlApiKey
+            ? "HTTP email delivery is restricted to the operator credential."
+            : "HTTP email delivery is disabled: QURL_API_KEY is not configured.",
+        );
+      }
       for (const warning of smtpInspection.securityWarnings) console.warn(`Warning: ${warning}`);
       if (config.allowedHosts?.length) {
         logInfo(`Host allowlist enabled with ${config.allowedHosts.length} entries.`);

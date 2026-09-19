@@ -301,10 +301,13 @@ describe("HTTP MCP server", () => {
   });
 
   it("requires explicit initialization for an injected credential store", async () => {
-    const injectedRuntime = createHttpRuntime({ ...testConfig, port: 0 }, {
-      version: "0.0.0-test",
-      credentialRateLimitStore: new MemoryCredentialRateLimitStore(),
-    });
+    const injectedRuntime = createHttpRuntime(
+      { ...testConfig, port: 0 },
+      {
+        version: "0.0.0-test",
+        credentialRateLimitStore: new MemoryCredentialRateLimitStore(),
+      },
+    );
     expect(() => injectedRuntime.startHttpServer()).toThrow("must be initialized");
     await expect(injectedRuntime.initialize()).resolves.toBeUndefined();
     const server = injectedRuntime.startHttpServer();
@@ -818,6 +821,57 @@ describe("HTTP MCP server", () => {
       }),
     );
   });
+
+  it.each([false, true])(
+    "refreshes email discovery for new requests/sessions (stateless=%s)",
+    async (stateless) => {
+      vi.stubEnv("QURL_API_KEY", "lv_live_operator");
+      const configured = createHttpRuntime({ ...testConfig, stateless }, { version: "test" });
+      try {
+        const baseUrl = await start(configured.app);
+        // Configure SMTP after runtime construction: new sessions must see the edit.
+        for (const [name, value] of Object.entries({
+          QURL_SMTP_HOST: "smtp.example.com",
+          QURL_SMTP_PORT: "587",
+          QURL_SMTP_SECURE: "false",
+          QURL_SMTP_USERNAME: "operator",
+          QURL_SMTP_PASSWORD: "test-password",
+          QURL_SMTP_FROM_EMAIL: "sender@example.com",
+        }))
+          vi.stubEnv(name, value);
+        for (const token of ["lv_live_operator", "lv_live_other", "invalid-config"]) {
+          if (token === "invalid-config") vi.stubEnv("QURL_SMTP_PORT", "invalid");
+          const sessionId = stateless ? undefined : await initialize(baseUrl, token);
+          const response = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: {
+              ...bearerHeaders(token),
+              ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+            },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+          });
+          const body = await response.text();
+          const result = JSON.parse(
+            body.startsWith("event:")
+              ? body
+                  .split("\n")
+                  .find((line) => line.startsWith("data: "))!
+                  .slice(6)
+              : body,
+          );
+          const create = result.result.tools.find(
+            (tool: { name: string }) => tool.name === "create_qurl",
+          );
+          expect("email_delivery" in create.inputSchema.properties).toBe(
+            token === "lv_live_operator",
+          );
+        }
+      } finally {
+        await configured.closeAllSessions();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("keeps pre-validation MCP catalog requests static and side-effect free", async () => {
     const client = makeMockClient();

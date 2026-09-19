@@ -140,6 +140,7 @@ npm run format
 | `MCP_MAX_SESSIONS*`, `MCP_SESSION_*`, `MCP_*_RATE_LIMIT_PER_MINUTE` | HTTP only | Session caps/TTLs and request limits                                 | See `README.md`         |
 | `MCP_MAX_UPLOAD_FILE_DATA_BYTES`                                    | No        | Decoded attachment limit                                             | `10485760`              |
 | `QURL_SMTP_*`                                                       | Email     | SMTP credentials, sender, allowlists, and quotas                     | Disabled                |
+| `MCP_SERVE_LAYERV_LEGAL_PAGES` | HTTP only | Serve LayerV-owned legal documents | Disabled |
 | `QURL_PUBLIC_VIDEO_*`                                               | HTTP only | Optional public video page/file settings                             | Disabled                |
 
 See `README.md` and the two tracked `*.example.json` files for the complete
@@ -238,9 +239,9 @@ The repository includes an API spec drift detection system:
 
 - **Snapshot:** `api-spec/qurls.yaml` contains the current API spec that the MCP tools are built against.
 - **Workflow:** `.github/workflows/api-spec-check.yml` runs weekly (Monday 9am UTC) and on manual dispatch.
-- **Detection:** The workflow fetches the live spec, diffs it against the snapshot, and opens a GitHub Issue with the diff when changes are detected.
-- **Action:** When an issue is opened, review the diff, update `api-spec/qurls.yaml`, update client types/tools as needed, and verify with `npm run build && npm run lint && npm test`.
-- **Spec URL:** Configurable via the `QURL_API_SPEC_URL` repository variable. Defaults to `https://api.layerv.ai/v1/openapi.yaml`.
+- **Detection:** The workflow fetches the live spec, diffs it against the snapshot, and fails with the diff in the run summary when changes are detected.
+- **Action:** When the drift check fails, review the diff, update `api-spec/qurls.yaml`, update client types/tools as needed, and verify with `npm run build && npm run lint && npm test`.
+- **Spec URL:** Configurable via the `QURL_API_SPEC_URL` repository variable. Defaults to `https://layerv.ai/docs/qurls.yaml`.
 - **Native UDP invariant:** The retired HTTP agent lifecycle operations (`/v1/agent/bootstrap`, `/v1/agent/registration-info`, and `/v1/agent/registration/complete`) and their operation IDs/schemas must not reappear in the snapshot. Keep the `qurl:agent` scope: it authorizes minting native UDP Connector enrollment credentials, not an HTTP lifecycle endpoint.
 
 ## npm Publishing (Trusted Publishing / OIDC)

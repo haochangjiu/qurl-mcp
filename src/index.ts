@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
+import { existsSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatErrorForLog, installTimestampedConsole, logInfo } from "./logging.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -34,7 +34,15 @@ export async function main(): Promise<void> {
     for (const warning of smtpInspection.securityWarnings) console.warn(`Warning: ${warning}`);
 
     const client = new QURLClient({ apiKey, baseURL: runtimeConfig.defaultQurlApiUrl });
-    const server = createServer(client, version, "stdio", runtimeConfig.maxUploadFileDataBytes);
+    logInfo(
+      runtimeConfig.defaultQurlConnectorUrl
+        ? "Uploads are configured."
+        : "Uploads are disabled: QURL_CONNECTOR_URL is not configured.",
+    );
+    const server = createServer(client, version, "stdio", runtimeConfig.maxUploadFileDataBytes, {
+      uploads: Boolean(runtimeConfig.defaultQurlConnectorUrl),
+      email: Boolean(runtimeConfig.smtp),
+    });
     await server.connect(new StdioServerTransport());
   } catch (error) {
     console.error(`qURL MCP startup failed (${formatErrorForLog(error)})`);
@@ -44,5 +52,6 @@ export async function main(): Promise<void> {
 
 const isMainModule =
   typeof process.argv[1] === "string" &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  existsSync(process.argv[1]) &&
+  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMainModule) await main();

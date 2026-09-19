@@ -66,14 +66,9 @@ export interface QURL {
   tags?: string[];
   expires_at: string;
   created_at: string;
-  // "expired" is documented in api-spec/qurls.yaml's
-  // `QurlData.properties.status` description (resources past their
-  // expires_at are reported as "expired" without being explicitly
-  // revoked) even though the same enum line is narrower. "unknown" is
-  // the drift sentinel emitted by qurlSchema.parse via .catch when the
-  // API returns a value the spec snapshot doesn't enumerate; see
-  // output-schemas.ts for the rationale and the hypothetical-collision
-  // note.
+  // Resources are active or revoked in the API. Keep "expired" as a
+  // compatibility tolerance for older responses; it is not a valid resource
+  // list filter. "unknown" is the output schema's fallback for other drift.
   status: "active" | "revoked" | "expired" | "unknown";
   custom_domain?: string | null;
   slug?: string;
@@ -247,7 +242,7 @@ export interface MintLinkOutput {
 export interface ShareCRIDOutput {
   qurl: string;
   qurl_id?: string;
-  crid: string;
+  crid?: string;
   type: string;
   expires_at?: string;
   expires_in_seconds: number;
@@ -534,7 +529,8 @@ export class QURLClient implements IQURLClient {
   }
 
   async deleteQURL(id: string): Promise<void> {
-    await this.call((sdk) => sdk.delete(id));
+    // Preserve the legacy endpoint while bypassing its SDK prefix guard for modern IDs.
+    await this.call((sdk) => (id.startsWith("r_") ? sdk.delete(id) : sdk.deleteResource(id)));
   }
 
   async updateQURL(id: string, input: UpdateQURLInput): Promise<{ data: QURL }> {
@@ -564,7 +560,7 @@ export class QURLClient implements IQURLClient {
   /**
    * Mint a temporary access link for a resource identified by CRID.
    *
-   * The published JavaScript SDK does not currently expose the integrations'
+   * The published JavaScript SDK does not currently expose the service's
    * CRID share route, so this small call uses the same API origin and bearer
    * credential directly. The endpoint requires a JSON object body even when
    * no options are supplied.
@@ -621,7 +617,7 @@ export class QURLClient implements IQURLClient {
       !data ||
       typeof data.qurl !== "string" ||
       (data.qurl_id !== undefined && typeof data.qurl_id !== "string") ||
-      typeof data.crid !== "string" ||
+      (data.crid !== undefined && typeof data.crid !== "string") ||
       typeof data.type !== "string" ||
       (data.expires_at !== undefined && typeof data.expires_at !== "string") ||
       typeof data.expires_in_seconds !== "number" ||

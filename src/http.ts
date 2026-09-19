@@ -1,12 +1,12 @@
 #!/usr/bin/env node
+import { isHttpEmailAuthorized } from "./services/email.js";
 
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync, realpathSync } from "node:fs";
 import { lstat } from "node:fs/promises";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   clearSensitiveLogValues,
@@ -36,6 +36,7 @@ import {
   DEFAULT_MAX_UPLOAD_FILE_DATA_BYTES,
   getDefaultConfigPath,
   inspectSmtpConfig,
+  loadRuntimeConfig,
   isLoopbackHostname,
 } from "./config.js";
 import {
@@ -395,6 +396,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     }
     const session = sessions.get(sessionId);
     if (!session) return;
+    // Admission replacement relies on removal before the first await.
     sessions.delete(sessionId);
     const closePromise = withRequestAuth(
       session.sessionId,
@@ -530,6 +532,24 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
 
   function bearerTokenMatches(token: string, expectedDigest: Buffer): boolean {
     return timingSafeEqual(digestBearerToken(token), expectedDigest);
+  }
+
+  function getToolCapabilities(bearerToken: string) {
+    // Upload routing is fixed for this runtime; SMTP configuration can refresh.
+    const uploads = Boolean(defaultQurlConnectorUrl);
+    try {
+      const runtimeConfig = loadRuntimeConfig(runtimeConfigPath);
+      return {
+        uploads,
+        email:
+          Boolean(runtimeConfig.smtp) &&
+          isHttpEmailAuthorized(bearerToken, runtimeConfig.qurlApiKey),
+      };
+    } catch (error) {
+      // A malformed SMTP edit must not take unrelated MCP tools offline.
+      console.error(`Email discovery disabled (${formatErrorForLog(error)})`);
+      return { uploads, email: false };
+    }
   }
 
   function getJsonRpcMethod(body: unknown): string | undefined {
@@ -749,6 +769,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
       version,
       "http",
       config.maxUploadFileDataBytes,
+      getToolCapabilities(bearerToken),
     );
     const transport =
       options.transportFactory?.(true) ??
@@ -806,23 +827,15 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
         const bearerTokenDigest = digestBearerToken(bearerToken);
         const credentialKey = bearerTokenDigest.toString("hex");
         await sweepExpiredSessions();
-        if (sessions.size + pendingInitializations >= config.maxSessions) {
-          rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
-          return;
-        }
+        let oldestIdle: SessionContext | undefined;
         let unvalidatedSessionCount = 0;
         let credentialSessionCount = 0;
         for (const session of sessions.values()) {
-          if (!session.credentialValidated) unvalidatedSessionCount += 1;
+          if (!session.credentialValidated) {
+            unvalidatedSessionCount += 1;
+            if (!oldestIdle && session.activeRequests === 0) oldestIdle = session;
+          }
           if (session.bearerTokenDigest.equals(bearerTokenDigest)) credentialSessionCount += 1;
-        }
-        if (unvalidatedSessionCount + pendingInitializations >= config.maxUnvalidatedSessions) {
-          rejectJsonRpc(
-            res,
-            503,
-            "The pending MCP credential-validation limit has been reached. Try again later.",
-          );
-          return;
         }
         const pendingForCredential = pendingInitializationsByCredential.get(credentialKey) ?? 0;
         if (credentialSessionCount + pendingForCredential >= config.maxSessionsPerCredential) {
@@ -831,6 +844,26 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
             503,
             "The per-credential MCP session limit has been reached. Close an existing session or try again later.",
           );
+          return;
+        }
+        if (unvalidatedSessionCount + pendingInitializations >= config.maxUnvalidatedSessions) {
+          // Unverified bearers must not reserve every admission slot until TTL.
+          // Map insertion order selects the oldest idle, unvalidated session.
+          // Bound asynchronous teardown too; never evict active or validated work.
+          if (!oldestIdle || closingSessions.size >= config.maxUnvalidatedSessions) {
+            rejectJsonRpc(
+              res,
+              503,
+              "The pending MCP credential-validation limit has been reached. Try again later.",
+            );
+            return;
+          }
+          // closeSession removes the entry synchronously before its first await.
+          // Reserve its replacement below without yielding to another initializer.
+          void closeSession(oldestIdle.sessionId);
+        }
+        if (sessions.size + pendingInitializations >= config.maxSessions) {
+          rejectJsonRpc(res, 503, "The MCP session limit has been reached. Try again later.");
           return;
         }
 
@@ -853,6 +886,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
             version,
             "http",
             config.maxUploadFileDataBytes,
+            getToolCapabilities(bearerToken),
           );
           const transport =
             options.transportFactory?.() ??
@@ -1102,7 +1136,7 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
     });
   }
 
-  const legalDocuments = getLegalDocuments();
+  const legalDocuments = config.serveLayerVLegalPages ? getLegalDocuments() : [];
   for (const document of legalDocuments) {
     const html = renderLegalDocumentHtml(document.path, baseUrl);
     if (!html) continue;
@@ -1237,6 +1271,13 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
           ? "SMTP is configured."
           : `SMTP is not configured. Missing fields: ${smtpInspection.missingFields.join(", ") || "(unknown)"}`,
       );
+      if (smtpInspection.enabled) {
+        logInfo(
+          loadRuntimeConfig(runtimeConfigPath).qurlApiKey
+            ? "HTTP email delivery is restricted to the operator credential."
+            : "HTTP email delivery is disabled: QURL_API_KEY is not configured.",
+        );
+      }
       for (const warning of smtpInspection.securityWarnings) console.warn(`Warning: ${warning}`);
       if (config.allowedHosts?.length) {
         logInfo(`Host allowlist enabled with ${config.allowedHosts.length} entries.`);
@@ -1316,7 +1357,8 @@ export function createHttpRuntime(config: HttpServerConfig, options: HttpRuntime
 
 const isMainModule =
   typeof process.argv[1] === "string" &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  existsSync(process.argv[1]) &&
+  realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 export async function runHttpMain(
   start = async (): Promise<void> => {
     const require = createRequire(import.meta.url);

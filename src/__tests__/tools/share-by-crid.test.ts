@@ -44,6 +44,28 @@ describe("shareByCRIDTool", () => {
     expect(shareByCRID).toHaveBeenCalledWith("crid_test", 5400);
   });
 
+  it.each(["1.001s999ms", "+2s", "2.s", "2000000μs", "0.0000000001s2s"])(
+    "accepts the Go duration %s as two whole seconds",
+    async (ttl) => {
+      const shareByCRID = vi.fn().mockResolvedValue({ data: sampleShareCRIDOutput() });
+      await shareByCRIDTool(makeMockClient({ shareByCRID })).handler({ crid: "crid_test", ttl });
+      expect(shareByCRID).toHaveBeenCalledWith("crid_test", 2);
+    },
+  );
+
+  it.each(["0s", "-1s", "1d", "1s!", "9223372037s", "9".repeat(65) + "s"])(
+    "rejects an invalid or overflowing Go duration %s",
+    async (ttl) => {
+      const shareByCRID = vi.fn();
+      const result = await shareByCRIDTool(makeMockClient({ shareByCRID })).handler({
+        crid: "crid_test",
+        ttl,
+      });
+      expect(result.isError).toBe(true);
+      expect(shareByCRID).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects a TTL that does not resolve to a positive whole number of seconds", async () => {
     const shareByCRID = vi.fn();
     const tool = shareByCRIDTool(makeMockClient({ shareByCRID }));

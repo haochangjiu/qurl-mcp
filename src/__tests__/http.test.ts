@@ -26,6 +26,7 @@ import { makeMockClient, sampleCreateQURLData } from "./helpers.js";
 import { MemoryCredentialRateLimitStore } from "../credential-rate-limit-store.js";
 
 const testConfig: HttpServerConfig = {
+  serveLayerVLegalPages: true,
   port: 3000,
   host: "127.0.0.1",
   baseUrl: "http://127.0.0.1:3000",
@@ -142,6 +143,16 @@ afterEach(async () => {
 });
 
 describe("HTTP MCP server", () => {
+  it("does not serve LayerV legal policies without operator opt-in", async () => {
+    const selfHosted = createHttpRuntime(
+      { ...testConfig, serveLayerVLegalPages: undefined },
+      { version: "0.0.0-test" },
+    );
+    const baseUrl = await start(selfHosted.app);
+    expect((await fetch(`${baseUrl}/legal/privacy`)).status).toBe(404);
+    expect((await fetch(`${baseUrl}/legal/terms`)).status).toBe(404);
+  });
+
   it("fails fast when a directly constructed DynamoDB runtime lacks a table", () => {
     expect(() =>
       createHttpRuntime(
@@ -290,10 +301,13 @@ describe("HTTP MCP server", () => {
   });
 
   it("requires explicit initialization for an injected credential store", async () => {
-    const injectedRuntime = createHttpRuntime(testConfig, {
-      version: "0.0.0-test",
-      credentialRateLimitStore: new MemoryCredentialRateLimitStore(),
-    });
+    const injectedRuntime = createHttpRuntime(
+      { ...testConfig, port: 0 },
+      {
+        version: "0.0.0-test",
+        credentialRateLimitStore: new MemoryCredentialRateLimitStore(),
+      },
+    );
     expect(() => injectedRuntime.startHttpServer()).toThrow("must be initialized");
     await expect(injectedRuntime.initialize()).resolves.toBeUndefined();
     const server = injectedRuntime.startHttpServer();
@@ -807,6 +821,57 @@ describe("HTTP MCP server", () => {
       }),
     );
   });
+
+  it.each([false, true])(
+    "refreshes email discovery for new requests/sessions (stateless=%s)",
+    async (stateless) => {
+      vi.stubEnv("QURL_API_KEY", "lv_live_operator");
+      const configured = createHttpRuntime({ ...testConfig, stateless }, { version: "test" });
+      try {
+        const baseUrl = await start(configured.app);
+        // Configure SMTP after runtime construction: new sessions must see the edit.
+        for (const [name, value] of Object.entries({
+          QURL_SMTP_HOST: "smtp.example.com",
+          QURL_SMTP_PORT: "587",
+          QURL_SMTP_SECURE: "false",
+          QURL_SMTP_USERNAME: "operator",
+          QURL_SMTP_PASSWORD: "test-password",
+          QURL_SMTP_FROM_EMAIL: "sender@example.com",
+        }))
+          vi.stubEnv(name, value);
+        for (const token of ["lv_live_operator", "lv_live_other", "invalid-config"]) {
+          if (token === "invalid-config") vi.stubEnv("QURL_SMTP_PORT", "invalid");
+          const sessionId = stateless ? undefined : await initialize(baseUrl, token);
+          const response = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: {
+              ...bearerHeaders(token),
+              ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+            },
+            body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+          });
+          const body = await response.text();
+          const result = JSON.parse(
+            body.startsWith("event:")
+              ? body
+                  .split("\n")
+                  .find((line) => line.startsWith("data: "))!
+                  .slice(6)
+              : body,
+          );
+          const create = result.result.tools.find(
+            (tool: { name: string }) => tool.name === "create_qurl",
+          );
+          expect("email_delivery" in create.inputSchema.properties).toBe(
+            token === "lv_live_operator",
+          );
+        }
+      } finally {
+        await configured.closeAllSessions();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("keeps pre-validation MCP catalog requests static and side-effect free", async () => {
     const client = makeMockClient();
@@ -1628,7 +1693,7 @@ describe("HTTP MCP server", () => {
     }
   });
 
-  it("enforces the unvalidated-session cap independently", async () => {
+  it("replaces the oldest idle unvalidated session instead of blocking new clients", async () => {
     const cappedRuntime = createHttpRuntime(
       { ...testConfig, maxSessions: 2, maxUnvalidatedSessions: 1 },
       { version: "0.0.0-test" },
@@ -1648,12 +1713,142 @@ describe("HTTP MCP server", () => {
       });
 
       expect(first.status).toBe(200);
-      expect(second.status).toBe(503);
+      expect(second.status).toBe(200);
+      const stale = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          ...bearerHeaders("lv_live_pending_a"),
+          "mcp-session-id": first.headers.get("mcp-session-id")!,
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+      });
+      expect(stale.status).toBe(404);
       expect(cappedRuntime.getActiveSessionCount()).toBe(1);
     } finally {
       await cappedRuntime.closeAllSessions();
     }
   });
+
+  it("bounds pending-session replacement while teardown is stalled", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let nextId = 0;
+    const bounded = createHttpRuntime(
+      { ...testConfig, maxUnvalidatedSessions: 1 },
+      {
+        version: "0.0.0-test",
+        transportFactory: () => {
+          const id = String(++nextId);
+          const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => id });
+          if (id === "1") {
+            const close = transport.close.bind(transport);
+            transport.close = async () => {
+              await gate;
+              await close();
+            };
+          }
+          return transport;
+        },
+      },
+    );
+    const baseUrl = await start(bounded.app);
+    try {
+      await initialize(baseUrl, "first");
+      await initialize(baseUrl, "replacement");
+      // The victim is removed before its asynchronous close finishes.
+      expect(bounded.getActiveSessionCount()).toBe(1);
+      const rejected = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: bearerHeaders("third"),
+        body: JSON.stringify(initializeBody),
+      });
+      expect(rejected.status).toBe(503);
+      expect(bounded.getActiveSessionCount()).toBe(1);
+    } finally {
+      release();
+      await bounded.closeAllSessions();
+    }
+  });
+
+  it.each([false, true])(
+    "preserves active and validated sessions during admission pressure (validated=%s)",
+    async (validated) => {
+      let release!: () => void;
+      let started!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const callStarted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const protectedRuntime = createHttpRuntime(
+        { ...testConfig, maxUnvalidatedSessions: 1 },
+        {
+          version: "0.0.0-test",
+          clientFactory: () =>
+            makeMockClient({
+              createQURL: vi.fn(async () => {
+                if (validated) markRequestCredentialValidated();
+                started();
+                await released;
+                return { data: sampleCreateQURLData() };
+              }),
+            }),
+        },
+      );
+      const baseUrl = await start(protectedRuntime.app);
+      const sessionId = await initialize(baseUrl, "protected");
+      const headers = { ...bearerHeaders("protected"), "mcp-session-id": sessionId };
+      await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+      });
+      const call = fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/call",
+          params: {
+            name: "create_qurl",
+            arguments: { target_url: "https://example.com" },
+          },
+        }),
+      });
+      try {
+        await callStarted;
+        if (validated) {
+          release();
+          await (await call).text();
+          await initialize(baseUrl, "junk-before");
+          await initialize(baseUrl, "junk-after");
+        } else {
+          const rejected = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            headers: bearerHeaders("junk"),
+            body: JSON.stringify(initializeBody),
+          });
+          expect(rejected.status).toBe(503);
+          release();
+          await (await call).text();
+        }
+        const retained = await fetch(`${baseUrl}/mcp`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list" }),
+        });
+        expect(retained.status).toBe(200);
+      } finally {
+        release();
+        await call;
+        await protectedRuntime.closeAllSessions();
+      }
+    },
+  );
 
   it("promotes a session only after a successful downstream qURL call", async () => {
     const validatedRuntime = createHttpRuntime(testConfig, {

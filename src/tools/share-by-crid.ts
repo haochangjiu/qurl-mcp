@@ -3,6 +3,7 @@ import type { IQURLClient } from "../client.js";
 import {
   toStructuredContent,
   withMissingApiKeyHandler,
+  zodErrorToToolResult,
   type ToolRuntimeOptions,
 } from "./_shared.js";
 import { shareByCRIDOutputSchema } from "./output-schemas.js";
@@ -24,31 +25,39 @@ export const shareByCRIDSchema = z.object({
     ),
 });
 
-const DURATION_PART = /(\d+(?:\.\d+)?|\.\d+)(ms|us|µs|ns|h|m|s)/gy;
-const UNIT_SECONDS: Record<string, number> = {
-  h: 60 * 60,
-  m: 60,
-  s: 1,
-  ms: 1e-3,
-  us: 1e-6,
-  µs: 1e-6,
-  ns: 1e-9,
+const DURATION_PART = /(\d+(?:\.\d*)?|\.\d+)(ms|us|µs|μs|ns|h|m|s)/gy;
+const UNIT_NANOSECONDS: Record<string, bigint> = {
+  h: 3_600_000_000_000n,
+  m: 60_000_000_000n,
+  s: 1_000_000_000n,
+  ms: 1_000_000n,
+  us: 1_000n,
+  µs: 1_000n,
+  μs: 1_000n,
+  ns: 1n,
 };
 
 function parseTTLSeconds(ttl: string): number | undefined {
-  let offset = 0;
-  let seconds = 0;
+  let offset = ttl.startsWith("+") ? 1 : 0;
+  let nanoseconds = 0n;
 
   while (offset < ttl.length) {
     DURATION_PART.lastIndex = offset;
     const part = DURATION_PART.exec(ttl);
-    if (!part || part.index !== offset) return undefined;
-
-    seconds += Number(part[1]) * UNIT_SECONDS[part[2]];
+    if (!part) return undefined;
+    const [whole, fraction = ""] = part[1].split(".");
+    // Go durations truncate each component to nanoseconds. Integer arithmetic
+    // avoids rejecting whole-second sums because of floating-point rounding.
+    nanoseconds +=
+      (BigInt(whole + fraction) * UNIT_NANOSECONDS[part[2]]) / 10n ** BigInt(fraction.length);
     offset = DURATION_PART.lastIndex;
   }
 
-  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : undefined;
+  return nanoseconds > 0n &&
+    nanoseconds <= 9_223_372_036_854_775_807n &&
+    nanoseconds % 1_000_000_000n === 0n
+    ? Number(nanoseconds / 1_000_000_000n)
+    : undefined;
 }
 
 function normalizeCRID(crid: string): string | undefined {
@@ -84,7 +93,10 @@ export function shareByCRIDTool(
       idempotentHint: false,
       openWorldHint: true,
     },
-    handler: withMissingApiKeyHandler(async (input: z.infer<typeof shareByCRIDSchema>) => {
+    handler: withMissingApiKeyHandler(async (raw: z.infer<typeof shareByCRIDSchema>) => {
+      const parsed = shareByCRIDSchema.safeParse(raw);
+      if (!parsed.success) return zodErrorToToolResult(parsed.error);
+      const input = parsed.data;
       const crid = normalizeCRID(input.crid);
       if (crid === undefined) {
         return {

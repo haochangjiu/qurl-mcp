@@ -1,14 +1,132 @@
-# @layervai/qurl-mcp
+# qURL MCP server for temporary access links
 
 [![npm version](https://img.shields.io/npm/v/@layervai/qurl-mcp.svg)](https://www.npmjs.com/package/@layervai/qurl-mcp)
 
+Give an AI agent tools to share localhost web apps, private APIs, and selected
+files through expiring [qURL™ by LayerV](https://layerv.ai/qurl/) access links.
+This repository implements the Model Context Protocol server for that workflow.
+The `@layervai/qurl-mcp` package runs as a local stdio server backed by the
+qURL CLI or API, or as an authenticated remote HTTP server backed by the API.
+
+Start with the [no-account local quickstart](#quick-start-no-account-needed)
+or [account-backed client configuration](#mcp-client-example), then choose
+the tools for your task. In local mode, `publish_crid` runs the installed
+CLI to publish an app that is already running; `share_by_crid` issues its
+access link. Creating a link alone does not publish an app or restrict an
+existing public URL. Uploads require the account-backed tool set and use a separate connector lifecycle;
+see [upload tools](#upload-tools) for their supported options and limits.
+
+[Local app sharing](#let-an-ai-agent-share-a-localhost-preview) ·
+[File sharing](#let-an-ai-agent-share-a-pdf-or-image) ·
+[Sharing questions](#mcp-sharing-questions) · [Private links](https://qurl.link/)
+
 > **⚠️ Renamed from `@layerv/qurl-mcp` in v0.4.0.** The old package is deprecated and will not receive further updates. If you're using `@layerv/qurl-mcp@0.3.x`, swap the scope in your MCP client config — same binary, same API key, no other changes.
 
-> A qURL MCP Server that supports both local `stdio` mode and remote `HTTP` mode for creating, managing, resolving, and sharing secure access links.
+## Let an AI agent share a localhost preview
+
+Use this workflow when an agent needs to give a reviewer access to a development
+preview or internal API. A tool that creates a link does not start the app on
+your laptop.
+
+1. Keep the local app running. Configure a local stdio MCP client using the
+   [no-account quickstart](#quick-start-no-account-needed), with the qURL CLI
+   installed on the same host and no `QURL_API_KEY` set.
+2. Ask the agent to call `publish_crid` with the app's root loopback URL, such
+   as `http://127.0.0.1:3000`, and save the returned CRID. Alternatively, publish
+   it directly with the [CLI](https://github.com/layervai/qurl-integrations#share-a-localhost-web-app).
+   Local tools use that machine's device identity; a CRID does not grant another
+   device authority over the resource.
+3. Ask the agent to call `share_by_crid` with the published CRID and a requested
+   lifetime. The following is a tool argument object, not a complete MCP message:
+
+   ```json
+   {
+     "crid": "REPLACE_WITH_PUBLISHED_CRID",
+     "ttl": "5m"
+   }
+   ```
+
+4. Share the full returned link through your intended private channel and
+   report the expiry returned by the service. Do not assume the requested TTL
+   was granted unchanged. Keep the publishing host and app available.
+
+Check that your installed release exposes these tools. In account-backed mode,
+`share_by_crid` instead uses the API credential and requires `qurl:resolve` and
+resource authorization. For resources already managed through the API, see `mint_link` and the other
+[link-management tools](#qurl-management-tools). Tool availability and resource
+identifiers matter; an uploaded-file identifier cannot be substituted into
+the same workflow.
+
+## Let an AI agent share a PDF or image
+
+For example, give a reviewer a short-lived link to a selected PDF report.
+Use account-backed stdio mode (`QURL_API_KEY` set) or authenticated HTTP mode,
+then configure the upload Connector under [configuration files](#configuration-files).
+Upload tools are not listed in no-account local mode. Choose the tool for the transport:
+
+| File location | Tool | Important requirement |
+| --- | --- | --- |
+| A PDF or supported raster image on the local MCP server host | `upload_file_qurl` | Available in stdio mode; the host process must be allowed to read the selected file. |
+| PDF or image bytes supplied to an HTTP or stdio MCP client | `upload_file_data_qurl` | Supply the supported file as base64 data with the correct filename and media type. |
+| Text to share as a generated PDF | `upload_text_qurl` | Uses the configured upload service, rather than publishing a local app. |
+
+A stdio tool argument example:
+
+```json
+{
+  "file_path": "/absolute/path/to/review.pdf",
+  "expires_in": "5m",
+  "one_time_use": true
+}
+```
+
+Pass these arguments to `upload_file_qurl` only for a file the user selected.
+The tool uploads to the configured file service and returns a new access link.
+Use the confirmed expiry in its response. Opening a single-use link to test it
+can consume it before the recipient opens it.
+
+Upload links cannot currently be revoked through this MCP server, and `mint_link`
+cannot create another link for an uploaded file. See [upload tools](#upload-tools)
+for the supported formats, size limits, response fields, and cleanup limitations.
+
+## Choosing what an agent should share
+
+### Should the agent share an app or a deployed preview?
+
+If the reviewer needs the current localhost app, keep it running and use the [local CLI-backed tools](#quick-start-no-account-needed) to publish the resource and issue its link. An existing ngrok endpoint, Cloudflare application, or Vercel preview is another possible handoff, but its access controls and availability come from that separately configured service. This server exposes qURL operations; it does not create those other deployments. See the [app-sharing comparison](https://github.com/layervai/qurl-integrations#should-i-share-the-running-app-or-deploy-a-preview) when choosing the workflow. Share the confirmed expiry and preserve the app's login requirements.
+
+### Should the agent upload the result or link to a running file service?
+
+A selected PDF or image can use this server's [account-backed upload tools](#upload-tools). A hosted Google Drive document instead uses Drive's [sharing permissions](https://support.google.com/drive/answer/2494822?hl=en); an S3 object can use a [presigned download URL](https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html). Those storage workflows are distinct from publishing a local file server, which must remain available. Choose based on where the result should live and which service the agent is authorized to use. This server's upload identifiers and revocation limits still apply; a file path, uploaded-file identifier, and local-service CRID are not interchangeable.
+
+## MCP sharing questions
+
+### Is this a public tunnel to my localhost app?
+
+In no-account stdio mode, this server invokes the local CLI to publish and
+manage an already running app. API-backed and remote HTTP modes use their
+configured resources; a remote server cannot publish an app on your laptop
+through its own localhost address. Use the
+[localhost-sharing comparison](https://github.com/layervai/qurl-integrations#choose-how-to-share-an-app-or-file)
+when choosing between resource access links and a public endpoint workflow.
+
+### Does every AI client support the same tools?
+
+No. Configure the client's supported transport and check the installed server's
+tool list. A remote HTTP server cannot use `upload_file_qurl` to read a file
+from the client's laptop; use the file-data tool for a supported attachment.
+
+### Can I use an app link and an uploaded-file link interchangeably?
+
+No. App resource management and uploaded-file link minting use different
+lifecycles. Follow the tool that issued the link, including its revocation limits.
+Your local app's own login continues to apply when the link opens it.
 
 ## Overview
 
-`qURL MCP` exposes qURL capabilities to MCP clients, GPTs, ChatGPT, and other remote integrations.
+The server exposes qURL operations as MCP tools for clients that support the
+configured transport. See the [LayerV MCP guide](https://layerv.ai/mcp/) for
+product setup and the tables below for the capabilities in this source version.
 
 It currently supports:
 

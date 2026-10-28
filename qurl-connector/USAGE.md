@@ -19,24 +19,34 @@ time, 24 hours of absolute lifetime, or a connector restart.
 
 ## Configure
 
-From the project directory:
+Run the commands below from the `qurl-connector` directory.
 
-```bash
-cd /Users/ymh/code/open-project/qurl-mcp/qurl-connector
-```
-
-Create `qurl-connector.json` with restrictive filesystem permissions:
+Copy the included example, then set `apiKey` to a qURL credential permitted to
+call the resource `share` API. Keep the resulting `qurl-connector.json` out of
+source control and restrict its filesystem permissions:
 
 ```json
 {
-  "listenAddr": "0.0.0.0:3100",
-  "apiBaseUrl": "https://api.layerv.ai",
-  "apiKey": "",
-  "deploymentPath": "/secure/path/qurl-deployment.json",
-  "allowedLinkHosts": ["qurl.link"],
-  "cridHeader": "X-MCP-CRID"
+  "listenAddr": "127.0.0.1:3100",
+  "apiBaseUrl": "https://api.layerv.xyz",
+  "apiKey": "REPLACE_WITH_QURL_CREDENTIAL_WITH_RESOURCE_SHARE_PERMISSION",
+  "deploymentPath": "qurl-deployment.xyz.json",
+  "allowedLinkHosts": ["qurl.link", "qurl.link.layerv.xyz"],
+  "cridHeader": "X-MCP-CRID",
+  "dynamicCrid": true
 }
 ```
+
+The same configuration is available in
+[`qurl-connector.example.json`](qurl-connector.example.json). It targets the
+sandbox API, and the included sandbox deployment uses `qurl.link.layerv.xyz`.
+For production, set `apiBaseUrl` to `https://api.layerv.ai`; for a private
+deployment, replace `deploymentPath` and allow its link host explicitly.
+
+`listenAddr` defaults to `127.0.0.1:3100`. The connector does not authenticate
+its clients and spends the configured qURL credential on their behalf, so bind
+it to a non-loopback address only behind a network boundary or an
+authenticating proxy.
 
 `deploymentPath` is resolved relative to the JSON configuration file. If it is
 omitted, the connector uses `QURL_DEPLOYMENT`. `apiBaseUrl` and `apiKey` are
@@ -82,10 +92,69 @@ tool_timeout_sec = 120
 Do not put qURL API keys or temporary qURL links in the MCP client
 configuration. The connector obtains the link only when creating a new session.
 
+## Dynamic CRID Mode
+
+With `dynamicCrid` enabled (the default), a client can connect without a CRID
+header. The connector then answers `initialize` itself and exposes three tools
+whose arguments carry the CRID:
+
+| Tool | Arguments | Behavior |
+| --- | --- | --- |
+| `qurl_list_tools` | `crid`, optional `cursor` | Lists the tools of the protected MCP server |
+| `qurl_call_tool` | `crid`, `name`, optional `arguments` | Calls one tool and returns its result unchanged |
+| `qurl_get_link` | `crid` | Returns a new qURL access link without calling any MCP server |
+
+```toml
+[mcp_servers.qurl]
+enabled = true
+url = "http://127.0.0.1:3100/mcp"
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+```
+
+Users do not have to say "CRID". A value written with a leading dollar sign,
+for example `List the tools of $r_abc123` or `Use $r_abc123 to search for
+qURL`, is treated as a CRID: the connector's instructions and tool descriptions
+tell the model this, and the connector strips one leading `$` from any CRID it
+receives. The same applies to CRID headers, the `crid` query
+parameter, and the top-level JSON `crid` field.
+
+The model picks the tool from what the user asks for. Only an explicit request
+to use the CRID as an MCP server, such as `List the tools of $r_abc123` or
+`Use $r_abc123 to search for qURL`, goes to `qurl_list_tools` or
+`qurl_call_tool`. Everything else, such as `Give me a qURL link for $r_abc123`,
+`Give me an access link to $r_abc123`, or `Open $r_abc123`, goes to
+`qurl_get_link`. Use `qurl_get_link` for protected HTTP services: it shares the
+CRID and returns the link for a browser, without opening a portal or starting
+an MCP session. If an MCP meta-tool is used on a CRID that is not an MCP server,
+the backend `initialize` fails and the error tells the model to call
+`qurl_get_link` instead.
+
+`qurl_get_link` returns the link to the model, so it appears in the
+conversation. Anyone holding it can open the resource until it expires, and
+each call mints a new link.
+
+The first MCP tool call for a CRID shares it, opens the qURL portal, and initializes an
+MCP session with the backend MCP server. Later calls with the same CRID in the
+same connector session reuse that backend session. One connector session can
+use up to 32 CRIDs. If the backend session expires (HTTP 404), the connector
+re-initializes it once; if the portal authorization is rejected (HTTP 401 or
+403), it shares the CRID again once. Deleting the connector session closes all
+of its backend sessions.
+
+Dynamic sessions forward tool listing and tool calls only. Backend resources,
+prompts, and server-initiated requests such as sampling are not relayed; use a
+CRID header when a client needs the full backend MCP surface. Set
+`"dynamicCrid": false` to require a CRID on every new session.
+
 ## Troubleshooting
 
 - `missing CRID`: provide `X-MCP-CRID`, another supported CRID header, a
-  `crid` query parameter, or a top-level JSON `crid` field.
+  `crid` query parameter, or a top-level JSON `crid` field. With
+  `dynamicCrid` enabled, only non-`initialize` requests without a session
+  return this error.
+- `CRID cannot be sent for a dynamic CRID session`: remove the CRID header and
+  pass `crid` as a tool argument instead.
 - `failed to obtain qurl link`: verify the configured API key, CRID, API URL,
   and share permission.
 - `invalid qurl link`: add the expected host to `allowedLinkHosts`.

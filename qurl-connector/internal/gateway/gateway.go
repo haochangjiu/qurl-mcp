@@ -34,16 +34,18 @@ type mcpSession struct {
 }
 
 type Gateway struct {
-	config      Config
-	server      *http.Server
-	resolve     LinkResolver
-	open        PortalOpener
-	transport   http.RoundTripper
-	sessions    map[string]*mcpSession
-	sessionsMu  sync.Mutex
-	cleanupCtx  context.Context
-	stopCleanup context.CancelFunc
-	cleanupOnce sync.Once
+	config    Config
+	server    *http.Server
+	resolve   LinkResolver
+	open      PortalOpener
+	transport http.RoundTripper
+	sessions  map[string]*mcpSession
+	// dynamicSessions are connector-owned MCP sessions opened without a CRID.
+	dynamicSessions map[string]*dynamicSession
+	sessionsMu      sync.Mutex
+	cleanupCtx      context.Context
+	stopCleanup     context.CancelFunc
+	cleanupOnce     sync.Once
 }
 
 // New creates a gateway backed by the qURL share API.
@@ -74,13 +76,14 @@ func NewWithResolver(config Config, resolver LinkResolver) *Gateway {
 func NewWithResolverAndOpener(config Config, resolver LinkResolver, opener PortalOpener) *Gateway {
 	cleanupCtx, stopCleanup := context.WithCancel(context.Background())
 	gateway := &Gateway{
-		config:      config,
-		resolve:     resolver,
-		open:        opener,
-		transport:   http.DefaultTransport,
-		sessions:    make(map[string]*mcpSession),
-		cleanupCtx:  cleanupCtx,
-		stopCleanup: stopCleanup,
+		config:          config,
+		resolve:         resolver,
+		open:            opener,
+		transport:       http.DefaultTransport,
+		sessions:        make(map[string]*mcpSession),
+		dynamicSessions: make(map[string]*dynamicSession),
+		cleanupCtx:      cleanupCtx,
+		stopCleanup:     stopCleanup,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", gateway.handleHealth)
@@ -144,6 +147,14 @@ func (g *Gateway) handleMCP(writer http.ResponseWriter, request *http.Request) {
 		createSession bool
 	)
 	if sessionID != "" {
+		if dynamic, ok := g.lookupDynamicSession(sessionID); ok {
+			if crid != "" {
+				http.Error(writer, "CRID cannot be sent for a dynamic CRID session; pass crid as a tool argument", http.StatusConflict)
+				return
+			}
+			g.serveDynamicSession(writer, request, sessionID, dynamic, body)
+			return
+		}
 		var (
 			found       bool
 			sessionCRID string
@@ -160,6 +171,10 @@ func (g *Gateway) handleMCP(writer http.ResponseWriter, request *http.Request) {
 		}
 	} else {
 		if crid == "" {
+			if g.config.DynamicCRID && request.Method == http.MethodPost && isInitializeRequest(body) {
+				g.initializeDynamicSession(writer, body)
+				return
+			}
 			http.Error(writer, "missing CRID; send X-MCP-CRID, ?crid=, or a top-level crid field", http.StatusBadRequest)
 			return
 		}
@@ -200,6 +215,9 @@ func (g *Gateway) handleMCP(writer http.ResponseWriter, request *http.Request) {
 	}
 	proxy.Transport = portalTransport{base: g.transport, portal: portal}
 	proxy.ModifyResponse = func(response *http.Response) error {
+		if response.StatusCode >= http.StatusBadRequest {
+			log.Printf("upstream MCP %s returned HTTP %d (%s)", request.Method, response.StatusCode, describeUpstreamResponse(response, nil))
+		}
 		if createSession && response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices {
 			if upstreamSessionID := strings.TrimSpace(response.Header.Get("Mcp-Session-Id")); upstreamSessionID != "" {
 				g.storeSession(upstreamSessionID, crid, portal, resourceURL)
@@ -224,17 +242,27 @@ func (g *Gateway) handleMCP(writer http.ResponseWriter, request *http.Request) {
 	proxy.ServeHTTP(writer, request)
 }
 
-func (g *Gateway) openPortal(ctx context.Context, crid string) (Portal, *url.URL, error) {
+// shareLink mints a qURL access link for the CRID and checks it against the
+// configured link policy.
+func (g *Gateway) shareLink(ctx context.Context, crid string) (string, error) {
 	if g.resolve == nil {
-		return nil, nil, fmt.Errorf("qURL link resolver is not configured")
+		return "", fmt.Errorf("qURL link resolver is not configured")
 	}
 	link, err := g.resolve.Share(ctx, crid)
 	if err != nil {
-		return nil, nil, fmt.Errorf("share CRID: %w", err)
+		return "", fmt.Errorf("share CRID: %w", err)
 	}
-	log.Printf("qURL share returned link %q (%s, host %s) for CRID %s", link, linkKind(link), linkHost(link), redactCRID(crid))
+	log.Printf("qURL share returned a %s link (host %s) for CRID %s", linkKind(link), linkHost(link), redactCRID(crid))
 	if _, err := g.validateLink(link); err != nil {
-		return nil, nil, fmt.Errorf("validate qURL link: %w", err)
+		return "", fmt.Errorf("validate qURL link: %w", err)
+	}
+	return link, nil
+}
+
+func (g *Gateway) openPortal(ctx context.Context, crid string) (Portal, *url.URL, error) {
+	link, err := g.shareLink(ctx, crid)
+	if err != nil {
+		return nil, nil, err
 	}
 	if g.open == nil {
 		return nil, nil, fmt.Errorf("qURL portal opener is not configured")
@@ -255,23 +283,25 @@ func (g *Gateway) openPortal(ctx context.Context, crid string) (Portal, *url.URL
 
 func (g *Gateway) writePortalError(writer http.ResponseWriter, crid string, err error) {
 	log.Printf("qURL portal setup failed for CRID %s: %v", redactCRID(crid), err)
-	if errors.Is(err, qurl.ErrInvalidResourceRequest) {
-		http.Error(writer, "invalid CRID", http.StatusBadRequest)
-		return
+	status, message := portalErrorResponse(err)
+	http.Error(writer, message, status)
+}
+
+// portalErrorResponse maps an openPortal error to a status and a message that
+// does not expose qURL links or portal URLs.
+func portalErrorResponse(err error) (int, string) {
+	switch {
+	case errors.Is(err, qurl.ErrInvalidResourceRequest):
+		return http.StatusBadRequest, "invalid CRID"
+	case strings.HasPrefix(err.Error(), "share CRID:"):
+		return http.StatusBadGateway, "failed to obtain qurl link"
+	case strings.HasPrefix(err.Error(), "validate qURL link:"):
+		return http.StatusBadGateway, "invalid qurl link"
+	case strings.HasPrefix(err.Error(), "validate portal resource URL:"):
+		return http.StatusBadGateway, "invalid qurl resource URL"
+	default:
+		return http.StatusBadGateway, "failed to open qurl portal"
 	}
-	if strings.HasPrefix(err.Error(), "share CRID:") {
-		http.Error(writer, "failed to obtain qurl link", http.StatusBadGateway)
-		return
-	}
-	if strings.HasPrefix(err.Error(), "validate qURL link:") {
-		http.Error(writer, "invalid qurl link", http.StatusBadGateway)
-		return
-	}
-	if strings.HasPrefix(err.Error(), "validate portal resource URL:") {
-		http.Error(writer, "invalid qurl resource URL", http.StatusBadGateway)
-		return
-	}
-	http.Error(writer, "failed to open qurl portal", http.StatusBadGateway)
 }
 
 func (g *Gateway) lookupSession(sessionID string) (Portal, *url.URL, string, bool) {
@@ -339,6 +369,13 @@ func (g *Gateway) purgeExpiredSessionsLocked(now time.Time) int {
 			removed++
 		}
 	}
+	for sessionID, session := range g.dynamicSessions {
+		if now.Sub(session.createdAt) >= mcpSessionAbsoluteTTL || now.Sub(session.lastUsedAt) >= mcpSessionIdleTTL {
+			delete(g.dynamicSessions, sessionID)
+			go g.closeDynamicSession(context.Background(), session)
+			removed++
+		}
+	}
 	return removed
 }
 
@@ -349,21 +386,31 @@ func bodyCRID(body []byte) string {
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(envelope.CRID)
+	return normalizeCRID(envelope.CRID)
+}
+
+// normalizeCRID trims whitespace and one leading dollar sign, so a CRID
+// written as "$value" is treated the same as "value".
+func normalizeCRID(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, "$") {
+		value = strings.TrimSpace(value[1:])
+	}
+	return value
 }
 
 func (g *Gateway) requestCRID(request *http.Request) string {
 	if header := strings.TrimSpace(g.config.CRIDHeader); header != "" {
-		if value := strings.TrimSpace(request.Header.Get(header)); value != "" {
+		if value := normalizeCRID(request.Header.Get(header)); value != "" {
 			return value
 		}
 	}
 	for _, header := range []string{"X-MCP-CRID", "X-QURL-CRID", "X-CRID", "CRID"} {
-		if value := strings.TrimSpace(request.Header.Get(header)); value != "" {
+		if value := normalizeCRID(request.Header.Get(header)); value != "" {
 			return value
 		}
 	}
-	return strings.TrimSpace(request.URL.Query().Get("crid"))
+	return normalizeCRID(request.URL.Query().Get("crid"))
 }
 
 func (g *Gateway) validateLink(raw string) (*url.URL, error) {

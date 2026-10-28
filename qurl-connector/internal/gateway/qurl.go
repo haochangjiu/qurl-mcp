@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -88,13 +89,12 @@ func (r *qurlLinkResolver) ResolveAccessToken(ctx context.Context, token string)
 		Data struct {
 			TargetURL string `json:"target_url"`
 		} `json:"data"`
-		Error any `json:"error"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
-		return "", fmt.Errorf("decode qurl resolve response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", fmt.Errorf("qurl resolve returned HTTP %d", response.StatusCode)
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&envelope); err != nil {
+		return "", fmt.Errorf("decode qurl resolve response: %w", err)
 	}
 	if strings.TrimSpace(envelope.Data.TargetURL) == "" {
 		return "", fmt.Errorf("qurl resolve returned an empty target URL")

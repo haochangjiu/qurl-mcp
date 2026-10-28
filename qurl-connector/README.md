@@ -19,14 +19,9 @@ The default configuration file is `qurl-connector.json`. Override its location
 with `QURL_CONNECTOR_CONFIG`; `QURL_CLI_MCP_GATEWAY_CONFIG` remains supported
 for existing deployments during migration.
 
-The `share` API requires a qURL credential with resource-share permission:
-
-```json
-{
-  "apiBaseUrl": "https://api.layerv.ai",
-  "apiKey": "lv_live_..."
-}
-```
+Start from [`qurl-connector.example.json`](qurl-connector.example.json), save
+the copy as `qurl-connector.json`, and replace `apiKey` with a qURL credential
+that has resource-share permission. Do not commit the resulting file.
 
 For qv2 links, configure `deploymentPath` in the JSON file or set
 `QURL_DEPLOYMENT`. Relative deployment paths are resolved from the configuration
@@ -48,6 +43,13 @@ curl -X POST 'http://127.0.0.1:3100/mcp' \
   -H 'X-MCP-CRID: <CRID>' \
   --data '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
+
+Clients may also connect without a CRID when `dynamicCrid` is enabled (the
+default). The connector then exposes `qurl_list_tools` and `qurl_call_tool`,
+which take the CRID as a tool argument, create the qURL link, and forward the
+request to the protected MCP server, plus `qurl_get_link`, which only returns a
+qURL access link and also works for protected HTTP services. See
+[USAGE.md](USAGE.md#dynamic-crid-mode).
 
 ## Run
 

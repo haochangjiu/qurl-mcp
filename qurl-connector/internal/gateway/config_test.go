@@ -26,3 +26,17 @@ func TestLoadConfigResolvesDeploymentPathRelativeToConfig(t *testing.T) {
 		t.Fatalf("DeploymentPath = %q, want %q", config.DeploymentPath, want)
 	}
 }
+
+func TestConfigFromFileDynamicCRIDDefaultsOn(t *testing.T) {
+	base := fileConfig{APIBaseURL: "https://api.example.test", APIKey: "test-key"}
+	config, err := configFromFile(base)
+	if err != nil || !config.DynamicCRID {
+		t.Fatalf("DynamicCRID = %t, err = %v; want enabled by default", config.DynamicCRID, err)
+	}
+	disabled := false
+	base.DynamicCRID = &disabled
+	config, err = configFromFile(base)
+	if err != nil || config.DynamicCRID {
+		t.Fatalf("DynamicCRID = %t, err = %v; want disabled", config.DynamicCRID, err)
+	}
+}

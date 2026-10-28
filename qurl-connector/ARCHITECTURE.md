@@ -30,6 +30,28 @@ for requests belonging to one MCP session. Cross-instance reuse requires a
 session layer that can safely recreate or share portal authorization; a portal
 handle must not be serialized into an ordinary cache.
 
+## Dynamic CRID Sessions
+
+When `dynamicCrid` is enabled and `initialize` arrives without a CRID, the
+connector creates its own MCP session (`qc_` session ID) instead of proxying.
+It exposes `qurl_list_tools`, `qurl_call_tool`, and `qurl_get_link`; each call
+names a CRID. `qurl_get_link` only shares the CRID and returns the link, so it
+also serves protected HTTP services and keeps no state. For the two MCP tools,
+the connector keeps one portal and one backend MCP client session for each CRID
+per connector session, created on first use:
+
+| Event | Connector action | Share call |
+| --- | --- | --- |
+| `initialize` without CRID | Create a connector session | None |
+| First tool call for a CRID | Open a portal and initialize a backend session | Once |
+| Later tool call for that CRID | Reuse the backend session | None |
+| `qurl_get_link` call | Return the validated qURL link | Every call |
+| Backend returns 404 | Re-initialize the backend session through the same portal | None |
+| Backend returns 401 or 403 | Open a new portal and backend session | Once |
+| `DELETE`, idle/absolute timeout | Close all backend sessions and remove the session | None |
+
+Only `tools/list` and `tools/call` are relayed in this mode.
+
 ## Request Flow
 
 ```text

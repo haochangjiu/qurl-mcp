@@ -19,6 +19,10 @@ type Config struct {
 	DeploymentPath   string
 	AllowedLinkHosts map[string]struct{}
 	CRIDHeader       string
+	// DynamicCRID lets clients initialize without a CRID and pass it as an
+	// argument of the connector's qurl_list_tools, qurl_call_tool, and
+	// qurl_get_link tools.
+	DynamicCRID bool
 }
 
 type fileConfig struct {
@@ -28,6 +32,7 @@ type fileConfig struct {
 	DeploymentPath   string   `json:"deploymentPath"`
 	AllowedLinkHosts []string `json:"allowedLinkHosts"`
 	CRIDHeader       string   `json:"cridHeader"`
+	DynamicCRID      *bool    `json:"dynamicCrid"`
 }
 
 // LoadConfig reads the configured JSON file, or the local default file.
@@ -66,7 +71,7 @@ func LoadConfig() (Config, error) {
 func configFromFile(file fileConfig) (Config, error) {
 	listenAddr := strings.TrimSpace(file.ListenAddr)
 	if listenAddr == "" {
-		listenAddr = "0.0.0.0:3100"
+		listenAddr = "127.0.0.1:3100"
 	}
 	apiBaseURL := strings.TrimRight(strings.TrimSpace(file.APIBaseURL), "/")
 	if apiBaseURL == "" {
@@ -96,8 +101,12 @@ func configFromFile(file fileConfig) (Config, error) {
 	if len(hosts) == 0 {
 		hosts["qurl.link"] = struct{}{}
 	}
+	dynamicCRID := true
+	if file.DynamicCRID != nil {
+		dynamicCRID = *file.DynamicCRID
+	}
 	return Config{
 		ListenAddr: listenAddr, APIBaseURL: apiBaseURL, APIKey: apiKey,
-		AllowedLinkHosts: hosts, CRIDHeader: cridHeader,
+		AllowedLinkHosts: hosts, CRIDHeader: cridHeader, DynamicCRID: dynamicCRID,
 	}, nil
 }
